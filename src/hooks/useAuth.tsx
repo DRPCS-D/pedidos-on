@@ -1,0 +1,122 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
+import { toast } from 'sonner'
+import { callApi, onSesionInvalida } from '@/lib/appsScript'
+import { borrarSesion, guardarSesion, leerSesion, type Sesion } from '@/lib/sesion'
+import { detenerSync, iniciarSync, limpiarTablas } from '@/lib/tablas'
+import type { Rol } from '@/lib/tipos'
+
+interface AuthState {
+  usuario: string | null
+  /** Nombre completo, o el usuario si no tiene. */
+  nombre: string | null
+  rol: Rol | null
+  esAdmin: boolean
+  /** Admin u operador: cargan y modifican pedidos, contenedores y catálogos. */
+  puedeEditar: boolean
+  /**
+   * Siempre false tras el arranque: a diferencia de una sesión con JWT, acá
+   * no hay nada async que esperar al montar (la sesión vive entera en
+   * localStorage). Se mantiene por si el shape necesita ampliarse más
+   * adelante (por ejemplo, para validar la sesión contra el servidor al
+   * abrir la app).
+   */
+  loading: boolean
+  signIn: (usuario: string, password: string) => Promise<{ error: string | null }>
+  signOut: () => void
+  /**
+   * Actualiza el nombre de la sesión actual sin volver a autenticar (misma
+   * contraseña). Se usa cuando un Admin se renombra a sí mismo desde
+   * Usuarios: sin esto, el próximo request con el nombre viejo fallaría.
+   */
+  actualizarNombreSesion: (nuevoUsuario: string) => void
+}
+
+const AuthContext = createContext<AuthState | null>(null)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [sesion, setSesion] = useState<Sesion | null>(() => leerSesion())
+
+  const signIn = useCallback(async (usuario: string, password: string) => {
+    try {
+      const data = await callApi<{ usuario: string; nombre?: string; rol: Rol }>('login', { usuario, password })
+      const nueva: Sesion = {
+        usuario: data.usuario || usuario,
+        nombre: data.nombre || '',
+        password,
+        rol: data.rol,
+      }
+      guardarSesion(nueva)
+      setSesion(nueva)
+      return { error: null }
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : 'No se pudo iniciar sesión.' }
+    }
+  }, [])
+
+  const signOut = useCallback(() => {
+    borrarSesion()
+    limpiarTablas()
+    setSesion(null)
+  }, [])
+
+  // Si el backend deja de aceptar las credenciales guardadas (te desactivaron,
+  // te renombraron o te cambiaron la contraseña desde otro dispositivo), se
+  // cierra la sesión: AppLayout ve `usuario === null` y manda al login. Sin
+  // esto la app quedaba mostrando errores en cada pantalla, sin salida obvia.
+  useEffect(() => {
+    return onSesionInvalida(() => {
+      if (!leerSesion()) return // ya no había sesión: nada que avisar
+      borrarSesion()
+      limpiarTablas()
+      setSesion(null)
+      toast.error('Tu sesión ya no es válida. Vuelve a iniciar sesión.')
+    })
+  }, [])
+
+  // El poll de sincronización solo corre mientras hay sesión.
+  const haySesion = sesion !== null
+  useEffect(() => {
+    if (haySesion) iniciarSync()
+    else detenerSync()
+  }, [haySesion])
+
+  const actualizarNombreSesion = useCallback((nuevoUsuario: string) => {
+    setSesion((s) => {
+      if (!s) return s
+      const nueva = { ...s, usuario: nuevoUsuario }
+      guardarSesion(nueva)
+      return nueva
+    })
+  }, [])
+
+  const valor = useMemo<AuthState>(
+    () => ({
+      usuario: sesion?.usuario ?? null,
+      nombre: sesion ? sesion.nombre || sesion.usuario : null,
+      rol: sesion?.rol ?? null,
+      esAdmin: sesion?.rol === 'admin',
+      puedeEditar: sesion?.rol === 'admin' || sesion?.rol === 'operador',
+      loading: false,
+      signIn,
+      signOut,
+      actualizarNombreSesion,
+    }),
+    [sesion, signIn, signOut, actualizarNombreSesion],
+  )
+
+  return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>
+}
+
+export function useAuth(): AuthState {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth tiene que usarse dentro de <AuthProvider>')
+  return ctx
+}

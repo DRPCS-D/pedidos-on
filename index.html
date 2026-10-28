@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Seguimiento de pedidos a fábricas, contenedores y embarques." />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <meta name="theme-color" content="#2B4193" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Pedidos" />
+
+    <title>Pedidos ON</title>
+
+    <!--
+      Aplica el tema antes del primer pintado: sin esto, entrar con el tema
+      oscuro muestra un fogonazo blanco mientras carga el bundle. La clave
+      tiene que coincidir con CLAVE_TEMA de src/lib/tema.ts.
+    -->
+    <script>
+      try {
+        if (localStorage.getItem('pedidos-on:tema') === 'oscuro') {
+          document.documentElement.classList.add('dark')
+        }
+      } catch (e) {
+        /* sin localStorage se usa el tema claro */
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

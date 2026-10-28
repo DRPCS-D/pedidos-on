@@ -1,0 +1,1390 @@
+/**
+ * Pedidos ON - Backend (Google Apps Script)
+ *
+ * Seguimiento de pedidos a fábricas de China: catálogos (proveedores,
+ * clientes, marcas, tamaños, productos), pedidos con sus líneas, contenedores
+ * con lo que lleva cada uno, historial de estados con fecha y archivos
+ * (fotos de productos, documentos de pedidos) en una carpeta de Google Drive.
+ *
+ * Despliegue:
+ *   Extensiones > Apps Script > pegar este archivo (y appsscript.json)
+ *   > Implementar > Aplicación web
+ *   > Ejecutar como: Yo | Quién tiene acceso: Cualquier usuario
+ *
+ * Primera vez: ejecuta la función `instalar` (botón Ejecutar en el editor, o
+ * menú "Pedidos ON" de la hoja tras recargarla). Crea las pestañas de
+ * ENCABEZADOS, la carpeta de Drive y un admin inicial (la contraseña queda en
+ * la pestaña Usuarios). Es idempotente.
+ * Funciona como script vinculado a un Sheet o como proyecto independiente
+ * (crea el Sheet "Pedidos ON" en tu Drive y guarda su ID en SPREADSHEET_ID).
+ *
+ * Roles:
+ *   admin     control total, usuarios, tipo de cambio, deshacer estados.
+ *   operador  carga y modifica catálogos, pedidos y contenedores.
+ *   consulta  solo lectura.
+ *
+ * Estados:
+ *   El pedido avanza a mano hasta "fabricado". Desde que viaja, su estado lo
+ *   dan los contenedores que lo llevan (el menos avanzado). "entregado" vuelve
+ *   a ser manual. Cada cambio queda en la pestaña Historial con su fecha.
+ */
+
+// ---------- Estructura ----------
+
+var ENCABEZADOS = {
+  Usuarios: ['usuario', 'password', 'rol', 'activo', 'nombre'],
+  Proveedores: ['id', 'nombre', 'contacto', 'telefono', 'email', 'ciudad', 'notas', 'activo'],
+  Clientes: ['id', 'nombre', 'ruc', 'telefono', 'email', 'direccion', 'notas', 'activo'],
+  Marcas: ['id', 'nombre', 'activo'],
+  Tamanos: ['id', 'nombre', 'activo'],
+  Productos: ['id', 'codigo', 'descripcion', 'color', 'marcaId', 'tamanoId', 'proveedorId',
+              'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'activo'],
+  Pedidos: ['id', 'folio', 'proveedorId', 'clienteId', 'estado', 'fechaPedido', 'notas',
+            'creadoPor', 'fechaCreacion', 'fechaEstado'],
+  PedidoLineas: ['id', 'pedidoId', 'productoId', 'codigo', 'descripcion', 'color', 'marca', 'tamano',
+                 'cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs'],
+  Contenedores: ['id', 'numero', 'tipo', 'naviera', 'bl', 'puertoOrigen', 'puertoDestino', 'etd', 'eta',
+                 'estado', 'notas', 'creadoPor', 'fechaCreacion'],
+  Cargas: ['id', 'contenedorId', 'pedidoId', 'lineaId', 'cantidad'],
+  Historial: ['id', 'entidad', 'entidadId', 'estado', 'fecha', 'usuario', 'nota', 'registrado'],
+  Archivos: ['id', 'entidad', 'entidadId', 'driveId', 'nombre', 'mime', 'bytes', 'principal', 'subidoPor', 'fecha'],
+  Config: ['clave', 'valor']
+};
+
+/** Columnas numéricas y de casilla: el resto se guarda como texto (formato @). */
+var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes'];
+var CASILLAS = ['activo', 'principal'];
+/** Columnas con fecha sin hora ('yyyy-MM-dd'); las demás fechas son ISO con hora. */
+var FECHAS_DIA = ['fechaPedido', 'fechaEstado', 'etd', 'eta'];
+
+var ROLES = ['admin', 'operador', 'consulta'];
+var EDITORES = ['admin', 'operador'];
+
+var ESTADOS_PEDIDO = ['registrado', 'confirmado', 'en_fabricacion', 'fabricado', 'embarcado', 'en_transito',
+                      'en_puerto', 'desembarcado', 'entregado', 'cancelado'];
+/** Los que se ponen a mano; los demás (embarcado…desembarcado) vienen de los contenedores. */
+var MANUALES_PEDIDO = ['registrado', 'confirmado', 'en_fabricacion', 'fabricado', 'entregado', 'cancelado'];
+var ESTADOS_CONTENEDOR = ['preparando', 'embarcado', 'en_transito', 'en_puerto', 'desembarcado'];
+var TIPOS_CONTENEDOR = ['20', '40', '40HC', 'otro'];
+
+var MAX_ARCHIVO_BYTES = 10 * 1024 * 1024;
+var CARPETA_RAIZ = 'Pedidos ON - Archivos';
+
+/**
+ * Catálogos simples con alta/edición/baja genérica. `usadoEn` impide borrar
+ * un registro referenciado (hay que desactivarlo).
+ */
+var CATALOGOS = {
+  proveedores: {
+    hoja: 'Proveedores', etiqueta: 'proveedor',
+    campos: { nombre: 80, contacto: 80, telefono: 40, email: 80, ciudad: 60, notas: 1000 },
+    usadoEn: [{ hoja: 'Pedidos', col: 'proveedorId' }, { hoja: 'Productos', col: 'proveedorId' }]
+  },
+  clientes: {
+    hoja: 'Clientes', etiqueta: 'cliente',
+    campos: { nombre: 80, ruc: 30, telefono: 40, email: 80, direccion: 150, notas: 1000 },
+    usadoEn: [{ hoja: 'Pedidos', col: 'clienteId' }]
+  },
+  marcas: {
+    hoja: 'Marcas', etiqueta: 'marca',
+    campos: { nombre: 60 },
+    usadoEn: [{ hoja: 'Productos', col: 'marcaId' }]
+  },
+  tamanos: {
+    hoja: 'Tamanos', etiqueta: 'tamaño',
+    campos: { nombre: 60 },
+    usadoEn: [{ hoja: 'Productos', col: 'tamanoId' }]
+  }
+};
+
+var REVISIONES = ['usuarios', 'proveedores', 'clientes', 'marcas', 'tamanos', 'productos', 'pedidos',
+                  'contenedores', 'historial', 'archivos', 'config'];
+
+// ---------- Entrada ----------
+
+function doGet() {
+  return jsonOut_({ ok: true, service: 'pedidos-on' });
+}
+
+function doPost(e) {
+  var body;
+  try {
+    body = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return jsonOut_({ ok: false, error: 'Solicitud inválida' });
+  }
+
+  try {
+    switch (body.action) {
+      case 'login':                  return handleLogin_(body);
+      case 'getRevisions':           return handleGetRevisions_(body);
+      case 'cambiarMiPassword':      return handleCambiarMiPassword_(body);
+      case 'listUsuarios':           return handleListUsuarios_(body);
+      case 'createUsuario':          return handleCreateUsuario_(body);
+      case 'updateUsuario':          return handleUpdateUsuario_(body);
+      case 'deleteUsuario':          return handleDeleteUsuario_(body);
+      case 'listCatalogo':           return handleListCatalogo_(body);
+      case 'guardarCatalogo':        return handleGuardarCatalogo_(body);
+      case 'borrarCatalogo':         return handleBorrarCatalogo_(body);
+      case 'listProductos':          return handleListProductos_(body);
+      case 'guardarProducto':        return handleGuardarProducto_(body);
+      case 'borrarProducto':         return handleBorrarProducto_(body);
+      case 'listPedidos':            return handleListPedidos_(body);
+      case 'guardarPedido':          return handleGuardarPedido_(body);
+      case 'cambiarEstadoPedido':    return handleCambiarEstadoPedido_(body);
+      case 'borrarPedido':           return handleBorrarPedido_(body);
+      case 'listContenedores':       return handleListContenedores_(body);
+      case 'guardarContenedor':      return handleGuardarContenedor_(body);
+      case 'guardarCargas':          return handleGuardarCargas_(body);
+      case 'cambiarEstadoContenedor': return handleCambiarEstadoContenedor_(body);
+      case 'borrarContenedor':       return handleBorrarContenedor_(body);
+      case 'deshacerEstado':         return handleDeshacerEstado_(body);
+      case 'listHistorial':          return handleListHistorial_(body);
+      case 'getConfig':              return handleGetConfig_(body);
+      case 'setConfig':              return handleSetConfig_(body);
+      case 'listArchivos':           return handleListArchivos_(body);
+      case 'subirArchivo':           return handleSubirArchivo_(body);
+      case 'marcarPrincipal':        return handleMarcarPrincipal_(body);
+      case 'borrarArchivo':          return handleBorrarArchivo_(body);
+      default:                       return jsonOut_({ ok: false, error: 'Acción desconocida' });
+    }
+  } catch (err) {
+    // "codigo" deja que el frontend distinga una sesión caída de cualquier otro error.
+    return jsonOut_({ ok: false, error: err.message || ('Error del servidor: ' + err), codigo: err.codigo || '' });
+  }
+}
+
+// ---------- Autenticación ----------
+
+function handleLogin_(body) {
+  var user = findUser_(body.usuario, body.password);
+  if (!user) return jsonOut_({ ok: false, error: 'Usuario o contraseña incorrectos' });
+  return jsonOut_({ ok: true, usuario: user.usuario, nombre: user.nombre, rol: user.rol });
+}
+
+/** Valida credenciales y devuelve el usuario; si no, error con codigo 'SESION'. */
+function requireAuth_(body) {
+  var user = findUser_(body.usuario, body.password);
+  if (!user) {
+    var e = new Error('Sesión no válida. Vuelve a iniciar sesión.');
+    e.codigo = 'SESION';
+    throw e;
+  }
+  return user;
+}
+
+function requireRol_(body, roles) {
+  var user = requireAuth_(body);
+  if (roles.indexOf(user.rol) === -1) throw new Error('No autorizado para esta acción.');
+  return user;
+}
+
+function requireAdmin_(body) { return requireRol_(body, ['admin']); }
+function requireEditor_(body) { return requireRol_(body, EDITORES); }
+
+function findUser_(usuario, password) {
+  var nombre = String(usuario || '').trim();
+  var pass = String(password || '');
+  if (!nombre || !pass) return null;
+  var t = leer_('Usuarios');
+  for (var i = 0; i < t.filas.length; i++) {
+    var u = t.filas[i];
+    // El usuario no distingue mayúsculas/minúsculas; la contraseña sí.
+    if (u.usuario.toUpperCase() === nombre.toUpperCase() && String(u.password) === pass && u.activo) {
+      return { usuario: u.usuario, rol: normalizarRol_(u.rol), nombre: u.nombre };
+    }
+  }
+  return null;
+}
+
+// ---------- Revisiones ----------
+// Un contador por tabla en PropertiesService para que el frontend pregunte
+// "¿cambió algo?" sin leer ninguna hoja. Se incrementa dentro del lock de cada
+// escritura. Editar el Sheet a mano NO lo incrementa (para eso está el botón ↻).
+
+function bumpRevision_(key) {
+  var props = PropertiesService.getScriptProperties();
+  var actual = Number(props.getProperty('rev_' + key)) || 0;
+  props.setProperty('rev_' + key, String(actual + 1));
+}
+
+function handleGetRevisions_(body) {
+  requireAuth_(body);
+  var props = PropertiesService.getScriptProperties().getProperties();
+  var revisiones = {};
+  REVISIONES.forEach(function (k) { revisiones[k] = Number(props['rev_' + k]) || 0; });
+  return jsonOut_({ ok: true, revisiones: revisiones });
+}
+
+/** Ejecuta `fn` con el lock del script tomado y sube las revisiones indicadas. */
+function conLock_(revs, fn) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var r = fn();
+    revs.forEach(bumpRevision_);
+    return r;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ---------- Usuarios ----------
+
+function handleListUsuarios_(body) {
+  requireAdmin_(body);
+  var usuarios = leer_('Usuarios').filas.filter(function (u) { return u.usuario; }).map(function (u) {
+    return { usuario: u.usuario, nombre: u.nombre, rol: normalizarRol_(u.rol), activo: u.activo };
+  });
+  return jsonOut_({ ok: true, usuarios: usuarios });
+}
+
+function handleCreateUsuario_(body) {
+  requireAdmin_(body);
+  var nombre = String(body.nuevoUsuario || '').trim().toUpperCase();
+  var password = String(body.nuevaPassword || '');
+  if (!nombre) throw new Error('El nombre de usuario es obligatorio.');
+  if (!password) throw new Error('La contraseña inicial es obligatoria.');
+  conLock_(['usuarios'], function () {
+    if (usuarioPorNombre_(nombre)) throw new Error('Ya existe un usuario con ese nombre.');
+    agregar_('Usuarios', {
+      usuario: nombre, password: password, rol: normalizarRol_(body.rol),
+      activo: body.activo !== false, nombre: texto_(body.nombre, 80)
+    });
+  });
+  return jsonOut_({ ok: true });
+}
+
+function handleUpdateUsuario_(body) {
+  requireAdmin_(body);
+  var objetivo = String(body.targetUsuario || '').trim();
+  if (!objetivo) throw new Error('Falta el usuario a editar.');
+  var rol = normalizarRol_(body.rol);
+  var activo = body.activo !== false;
+  var nuevoNombre = String(body.nuevoUsuario || '').trim().toUpperCase();
+  var nuevaPassword = String(body.nuevaPassword || '');
+
+  var final = conLock_(['usuarios'], function () {
+    var u = usuarioPorNombre_(objetivo);
+    if (!u) throw new Error('El usuario ya no existe.');
+    var eraAdminActivo = normalizarRol_(u.rol) === 'admin' && u.activo;
+    if (eraAdminActivo && !(rol === 'admin' && activo) && contarAdminsActivos_() <= 1) {
+      throw new Error('No puedes quitar el último Admin activo.');
+    }
+    var seRenombra = !!nuevoNombre && nuevoNombre !== u.usuario.toUpperCase();
+    if (seRenombra && usuarioPorNombre_(nuevoNombre)) throw new Error('Ya existe un usuario con ese nombre.');
+    if (seRenombra) u.usuario = nuevoNombre;
+    u.rol = rol;
+    u.activo = activo;
+    u.nombre = texto_(body.nombre, 80);
+    if (nuevaPassword) u.password = nuevaPassword;
+    escribir_('Usuarios', u);
+    return u.usuario;
+  });
+  return jsonOut_({ ok: true, usuario: final });
+}
+
+function handleDeleteUsuario_(body) {
+  var actual = requireAdmin_(body);
+  var objetivo = String(body.targetUsuario || '').trim();
+  if (!objetivo) throw new Error('Falta el usuario a borrar.');
+  if (objetivo.toUpperCase() === actual.usuario.toUpperCase()) throw new Error('No puedes borrarte a ti mismo.');
+  conLock_(['usuarios'], function () {
+    var u = usuarioPorNombre_(objetivo);
+    if (!u) throw new Error('El usuario ya no existe.');
+    if (normalizarRol_(u.rol) === 'admin' && u.activo && contarAdminsActivos_() <= 1) {
+      throw new Error('No puedes borrar el último Admin activo.');
+    }
+    borrarFila_(hoja_('Usuarios'), u._fila);
+  });
+  return jsonOut_({ ok: true });
+}
+
+function handleCambiarMiPassword_(body) {
+  var user = requireAuth_(body);
+  var nuevaPassword = String(body.nuevaPassword || '');
+  if (!nuevaPassword) throw new Error('La nueva contraseña es obligatoria.');
+  conLock_([], function () {
+    var u = usuarioPorNombre_(user.usuario);
+    if (!u) throw new Error('El usuario ya no existe.');
+    u.password = nuevaPassword;
+    escribir_('Usuarios', u);
+  });
+  return jsonOut_({ ok: true });
+}
+
+function usuarioPorNombre_(nombre) {
+  var buscado = String(nombre).trim().toUpperCase();
+  var filas = leer_('Usuarios').filas;
+  for (var i = 0; i < filas.length; i++) {
+    if (filas[i].usuario.toUpperCase() === buscado) return filas[i];
+  }
+  return null;
+}
+
+function contarAdminsActivos_() {
+  return leer_('Usuarios').filas.filter(function (u) { return normalizarRol_(u.rol) === 'admin' && u.activo; }).length;
+}
+
+/** { USUARIO: nombre completo } para mostrar quién hizo cada cosa. */
+function mapaNombres_() {
+  var mapa = {};
+  leer_('Usuarios').filas.forEach(function (u) {
+    if (u.usuario && u.nombre) mapa[u.usuario.toUpperCase()] = u.nombre;
+  });
+  return mapa;
+}
+
+function nombreDe_(nombres, usuario) {
+  var u = String(usuario || '').trim();
+  if (!u) return '';
+  return nombres[u.toUpperCase()] || u;
+}
+
+// ---------- Catálogos simples ----------
+
+function catalogo_(nombre) {
+  var c = CATALOGOS[String(nombre || '')];
+  if (!c) throw new Error('Catálogo desconocido.');
+  return c;
+}
+
+function handleListCatalogo_(body) {
+  requireAuth_(body);
+  var c = catalogo_(body.tabla);
+  var lista = leer_(c.hoja).filas.filter(function (r) { return r.id; }).map(limpiar_);
+  lista.sort(function (a, b) { return a.nombre.localeCompare(b.nombre); });
+  return jsonOut_({ ok: true, registros: lista });
+}
+
+function handleGuardarCatalogo_(body) {
+  requireEditor_(body);
+  var c = catalogo_(body.tabla);
+  var datos = body.datos || {};
+  var obj = {};
+  Object.keys(c.campos).forEach(function (k) { obj[k] = texto_(datos[k], c.campos[k]); });
+  obj.activo = datos.activo !== false;
+  if (!obj.nombre) throw new Error('El nombre es obligatorio.');
+  var id = String(body.id || '').trim();
+
+  conLock_([body.tabla], function () {
+    var t = leer_(c.hoja);
+    var repetido = t.filas.filter(function (r) {
+      return r.id !== id && r.nombre.toUpperCase() === obj.nombre.toUpperCase();
+    })[0];
+    if (repetido) throw new Error('Ya existe un ' + c.etiqueta + ' con ese nombre.');
+    if (id) {
+      var actual = buscar_(t, 'id', id);
+      if (!actual) throw new Error('El ' + c.etiqueta + ' ya no existe.');
+      Object.keys(obj).forEach(function (k) { actual[k] = obj[k]; });
+      escribir_(c.hoja, actual);
+    } else {
+      obj.id = nuevoId_();
+      agregar_(c.hoja, obj);
+    }
+  });
+  return jsonOut_({ ok: true });
+}
+
+function handleBorrarCatalogo_(body) {
+  requireEditor_(body);
+  var c = catalogo_(body.tabla);
+  var id = String(body.id || '').trim();
+  conLock_([body.tabla], function () {
+    var actual = buscar_(leer_(c.hoja), 'id', id);
+    if (!actual) throw new Error('El ' + c.etiqueta + ' ya no existe.');
+    c.usadoEn.forEach(function (u) {
+      if (buscar_(leer_(u.hoja), u.col, id)) {
+        throw new Error('Está en uso en ' + u.hoja + '. Desactívalo en lugar de borrarlo.');
+      }
+    });
+    borrarFila_(hoja_(c.hoja), actual._fila);
+  });
+  return jsonOut_({ ok: true });
+}
+
+// ---------- Productos ----------
+
+function handleListProductos_(body) {
+  requireAuth_(body);
+  // Foto principal de cada producto (o la primera imagen si no se marcó ninguna).
+  var fotos = {};
+  leer_('Archivos').filas.forEach(function (a) {
+    if (a.entidad !== 'producto' || a.mime.indexOf('image/') !== 0) return;
+    if (!fotos[a.entidadId] || a.principal) fotos[a.entidadId] = a.driveId;
+  });
+  var lista = leer_('Productos').filas.filter(function (p) { return p.id; }).map(function (p) {
+    var x = limpiar_(p);
+    x.fotoId = fotos[p.id] || '';
+    return x;
+  });
+  lista.sort(function (a, b) { return a.codigo.localeCompare(b.codigo); });
+  return jsonOut_({ ok: true, productos: lista });
+}
+
+function handleGuardarProducto_(body) {
+  requireEditor_(body);
+  var d = body.datos || {};
+  var obj = {
+    codigo: texto_(d.codigo, 40),
+    descripcion: texto_(d.descripcion, 300),
+    color: texto_(d.color, 60),
+    marcaId: texto_(d.marcaId, 40),
+    tamanoId: texto_(d.tamanoId, 40),
+    proveedorId: texto_(d.proveedorId, 40),
+    precioCosto: numero_(d.precioCosto, 'El precio de costo'),
+    precioVentaUsd: numero_(d.precioVentaUsd, 'El precio de venta en USD'),
+    precioVentaGs: Math.round(numero_(d.precioVentaGs, 'El precio de venta en Gs')),
+    activo: d.activo !== false
+  };
+  if (!obj.codigo) throw new Error('El código es obligatorio.');
+  if (!obj.descripcion) throw new Error('La descripción es obligatoria.');
+  validarReferencia_('Marcas', obj.marcaId, 'La marca');
+  validarReferencia_('Tamanos', obj.tamanoId, 'El tamaño');
+  validarReferencia_('Proveedores', obj.proveedorId, 'El proveedor');
+  var id = String(body.id || '').trim();
+
+  var final = conLock_(['productos'], function () {
+    var t = leer_('Productos');
+    var repetido = t.filas.filter(function (p) {
+      return p.id !== id && p.codigo.toUpperCase() === obj.codigo.toUpperCase();
+    })[0];
+    if (repetido) throw new Error('Ya existe un producto con el código ' + obj.codigo + '.');
+    if (id) {
+      var actual = buscar_(t, 'id', id);
+      if (!actual) throw new Error('El producto ya no existe.');
+      Object.keys(obj).forEach(function (k) { actual[k] = obj[k]; });
+      escribir_('Productos', actual);
+      return id;
+    }
+    obj.id = nuevoId_();
+    agregar_('Productos', obj);
+    return obj.id;
+  });
+  return jsonOut_({ ok: true, id: final });
+}
+
+function handleBorrarProducto_(body) {
+  requireEditor_(body);
+  var id = String(body.id || '').trim();
+  conLock_(['productos', 'archivos'], function () {
+    var p = buscar_(leer_('Productos'), 'id', id);
+    if (!p) throw new Error('El producto ya no existe.');
+    if (buscar_(leer_('PedidoLineas'), 'productoId', id)) {
+      throw new Error('El producto está en pedidos. Desactívalo en lugar de borrarlo.');
+    }
+    borrarArchivosDe_('producto', id);
+    borrarFila_(hoja_('Productos'), p._fila);
+  });
+  return jsonOut_({ ok: true });
+}
+
+// ---------- Pedidos ----------
+
+function handleListPedidos_(body) {
+  requireAuth_(body);
+  var nombres = mapaNombres_();
+  var cargado = cargadoPorLinea_();
+  var lineasPorPedido = {};
+  leer_('PedidoLineas').filas.forEach(function (l) {
+    if (!l.id) return;
+    var x = limpiar_(l);
+    x.cargado = cargado[l.id] || 0;
+    (lineasPorPedido[l.pedidoId] = lineasPorPedido[l.pedidoId] || []).push(x);
+  });
+  var lista = leer_('Pedidos').filas.filter(function (p) { return p.id; }).map(function (p) {
+    var x = limpiar_(p);
+    x.estado = normalizarEstadoPedido_(p.estado);
+    x.creadoNombre = nombreDe_(nombres, p.creadoPor);
+    x.lineas = lineasPorPedido[p.id] || [];
+    return x;
+  });
+  // Más recientes primero.
+  lista.sort(function (a, b) { return String(b.folio).localeCompare(String(a.folio)); });
+  return jsonOut_({ ok: true, pedidos: lista });
+}
+
+/**
+ * Alta o edición de un pedido con sus líneas. Las líneas llegan completas:
+ * las que traen id se actualizan, las nuevas se agregan con una copia de los
+ * datos del producto, y las que faltan se borran (si no están cargadas en un
+ * contenedor). Una línea cargada no puede quedar con menos cantidad que la cargada.
+ */
+function handleGuardarPedido_(body) {
+  var user = requireEditor_(body);
+  var proveedorId = texto_(body.proveedorId, 40);
+  var clienteId = texto_(body.clienteId, 40);
+  var fechaPedido = texto_(body.fechaPedido, 10);
+  if (!proveedorId) throw new Error('El proveedor es obligatorio.');
+  validarReferencia_('Proveedores', proveedorId, 'El proveedor');
+  validarReferencia_('Clientes', clienteId, 'El cliente');
+  if (!fechaValida_(fechaPedido)) throw new Error('La fecha del pedido no es válida.');
+  var lineasIn = Array.isArray(body.lineas) ? body.lineas : [];
+  if (!lineasIn.length) throw new Error('El pedido debe tener al menos un producto.');
+  var id = String(body.id || '').trim();
+
+  var resultado = conLock_(['pedidos', 'historial'], function () {
+    var tP = leer_('Pedidos');
+    var pedido;
+    if (id) {
+      pedido = buscar_(tP, 'id', id);
+      if (!pedido) throw new Error('El pedido ya no existe.');
+      if (pedido.estado === 'cancelado' || pedido.estado === 'entregado') {
+        throw new Error('No se puede modificar un pedido ' + pedido.estado + '.');
+      }
+      pedido.proveedorId = proveedorId;
+      pedido.clienteId = clienteId;
+      pedido.fechaPedido = fechaPedido;
+      pedido.notas = texto_(body.notas, 2000);
+      escribir_('Pedidos', pedido);
+    } else {
+      // El pedido nace «registrado» en la fecha en que se hizo (no después de hoy).
+      var desde = fechaPedido > hoy_() ? hoy_() : fechaPedido;
+      pedido = {
+        id: nuevoId_(), folio: siguienteFolio_(tP), proveedorId: proveedorId, clienteId: clienteId,
+        estado: 'registrado', fechaPedido: fechaPedido, notas: texto_(body.notas, 2000),
+        creadoPor: user.usuario, fechaCreacion: new Date().toISOString(), fechaEstado: desde
+      };
+      agregar_('Pedidos', pedido);
+      agregarHistorial_('pedido', pedido.id, 'registrado', desde, user.usuario, '');
+    }
+    guardarLineas_(pedido.id, lineasIn);
+    return { id: pedido.id, folio: pedido.folio };
+  });
+  return jsonOut_({ ok: true, id: resultado.id, folio: resultado.folio });
+}
+
+function guardarLineas_(pedidoId, lineasIn) {
+  var tL = leer_('PedidoLineas');
+  var productos = leer_('Productos');
+  var marcas = mapaNombresCatalogo_('Marcas');
+  var tamanos = mapaNombresCatalogo_('Tamanos');
+  var cargado = cargadoPorLinea_();
+  var existentes = tL.filas.filter(function (l) { return l.pedidoId === pedidoId; });
+  var vistos = {};
+
+  lineasIn.forEach(function (li) {
+    var cantidad = numero_(li.cantidad, 'La cantidad');
+    if (!(cantidad > 0)) throw new Error('Cada producto debe tener una cantidad mayor que cero.');
+    var precios = {
+      precioCosto: numero_(li.precioCosto, 'El precio de costo'),
+      precioVentaUsd: numero_(li.precioVentaUsd, 'El precio de venta en USD'),
+      precioVentaGs: Math.round(numero_(li.precioVentaGs, 'El precio de venta en Gs'))
+    };
+    var lid = String(li.id || '').trim();
+    var actual = lid ? existentes.filter(function (l) { return l.id === lid; })[0] : null;
+    if (actual) {
+      vistos[lid] = true;
+      if (cantidad < (cargado[lid] || 0)) {
+        throw new Error('El producto ' + actual.codigo + ' ya tiene ' + cargado[lid] + ' cargados en contenedores.');
+      }
+      actual.cantidad = cantidad;
+      Object.keys(precios).forEach(function (k) { actual[k] = precios[k]; });
+      escribir_('PedidoLineas', actual);
+      return;
+    }
+    var prod = buscar_(productos, 'id', String(li.productoId || ''));
+    if (!prod) throw new Error('Uno de los productos ya no existe.');
+    var nueva = {
+      id: nuevoId_(), pedidoId: pedidoId, productoId: prod.id, codigo: prod.codigo,
+      descripcion: prod.descripcion, color: prod.color, marca: marcas[prod.marcaId] || '',
+      tamano: tamanos[prod.tamanoId] || '', cantidad: cantidad
+    };
+    Object.keys(precios).forEach(function (k) { nueva[k] = precios[k]; });
+    agregar_('PedidoLineas', nueva);
+  });
+
+  // Las que no vinieron se borran (de abajo hacia arriba para no correr los índices).
+  var sheet = hoja_('PedidoLineas');
+  existentes.filter(function (l) { return !vistos[l.id]; })
+    .sort(function (a, b) { return b._fila - a._fila; })
+    .forEach(function (l) {
+      if (cargado[l.id]) throw new Error('No se puede quitar ' + l.codigo + ': está cargado en un contenedor.');
+      borrarFila_(sheet, l._fila);
+    });
+}
+
+/** Devuelve el siguiente folio 'PED-0001'. */
+function siguienteFolio_(tabla) {
+  var max = 0;
+  tabla.filas.forEach(function (p) {
+    var n = parseInt(String(p.folio).replace(/[^0-9]/g, ''), 10);
+    if (!isNaN(n) && n > max) max = n;
+  });
+  return 'PED-' + ('000' + (max + 1)).slice(-Math.max(4, String(max + 1).length));
+}
+
+/** Cambio manual de estado (registrado…fabricado, entregado, cancelado). */
+function handleCambiarEstadoPedido_(body) {
+  var user = requireEditor_(body);
+  var estado = String(body.estado || '');
+  if (MANUALES_PEDIDO.indexOf(estado) === -1) throw new Error('Ese estado lo ponen los contenedores.');
+  var fecha = fechaCambio_(body.fecha);
+  var nota = texto_(body.nota, 500);
+
+  conLock_(['pedidos', 'historial'], function () {
+    var p = buscar_(leer_('Pedidos'), 'id', String(body.id || ''));
+    if (!p) throw new Error('El pedido ya no existe.');
+    var actual = normalizarEstadoPedido_(p.estado);
+    if (actual === estado) throw new Error('El pedido ya está en ese estado.');
+    validarFechaSecuencia_('pedido', p.id, fecha);
+    var conCargas = !!buscar_(leer_('Cargas'), 'pedidoId', p.id);
+    var viajando = ordenPedido_(actual) >= ordenPedido_('embarcado') && actual !== 'cancelado';
+
+    if (estado === 'entregado') {
+      if (actual !== 'desembarcado') throw new Error('Solo se entrega un pedido desembarcado.');
+    } else if (estado === 'cancelado') {
+      if (conCargas) throw new Error('El pedido está cargado en un contenedor: quítalo antes de cancelarlo.');
+    } else if (viajando) {
+      throw new Error('El pedido ya está embarcado: su estado lo dan los contenedores.');
+    }
+    p.estado = estado;
+    p.fechaEstado = fecha;
+    escribir_('Pedidos', p);
+    agregarHistorial_('pedido', p.id, estado, fecha, user.usuario, nota);
+  });
+  return jsonOut_({ ok: true });
+}
+
+/** Solo el admin, y solo pedidos cancelados. Se lleva líneas, historial y archivos. */
+function handleBorrarPedido_(body) {
+  requireAdmin_(body);
+  var id = String(body.id || '').trim();
+  conLock_(['pedidos', 'historial', 'archivos'], function () {
+    var p = buscar_(leer_('Pedidos'), 'id', id);
+    if (!p) throw new Error('El pedido ya no existe.');
+    if (p.estado !== 'cancelado') throw new Error('Solo se puede borrar un pedido cancelado. Cancélalo primero.');
+    borrarDonde_('PedidoLineas', 'pedidoId', id);
+    borrarHistorial_('pedido', id);
+    borrarArchivosDe_('pedido', id);
+    borrarFila_(hoja_('Pedidos'), p._fila);
+  });
+  return jsonOut_({ ok: true });
+}
+
+// ---------- Contenedores ----------
+
+function handleListContenedores_(body) {
+  requireAuth_(body);
+  var nombres = mapaNombres_();
+  var cargasPor = {};
+  leer_('Cargas').filas.forEach(function (c) {
+    if (!c.id) return;
+    (cargasPor[c.contenedorId] = cargasPor[c.contenedorId] || []).push(limpiar_(c));
+  });
+  var lista = leer_('Contenedores').filas.filter(function (c) { return c.id; }).map(function (c) {
+    var x = limpiar_(c);
+    x.estado = normalizarEstadoContenedor_(c.estado);
+    x.creadoNombre = nombreDe_(nombres, c.creadoPor);
+    x.cargas = cargasPor[c.id] || [];
+    return x;
+  });
+  lista.sort(function (a, b) { return String(b.fechaCreacion).localeCompare(String(a.fechaCreacion)); });
+  return jsonOut_({ ok: true, contenedores: lista });
+}
+
+function handleGuardarContenedor_(body) {
+  var user = requireEditor_(body);
+  var d = body.datos || {};
+  var obj = {
+    numero: texto_(d.numero, 30).toUpperCase(),
+    tipo: TIPOS_CONTENEDOR.indexOf(String(d.tipo)) === -1 ? '40HC' : String(d.tipo),
+    naviera: texto_(d.naviera, 60),
+    bl: texto_(d.bl, 60),
+    puertoOrigen: texto_(d.puertoOrigen, 60),
+    puertoDestino: texto_(d.puertoDestino, 60),
+    etd: texto_(d.etd, 10),
+    eta: texto_(d.eta, 10),
+    notas: texto_(d.notas, 2000)
+  };
+  if (!obj.numero) throw new Error('El número o referencia del contenedor es obligatorio.');
+  if (obj.etd && !fechaValida_(obj.etd)) throw new Error('La fecha estimada de salida no es válida.');
+  if (obj.eta && !fechaValida_(obj.eta)) throw new Error('La fecha estimada de llegada no es válida.');
+  var id = String(body.id || '').trim();
+
+  var final = conLock_(['contenedores', 'historial'], function () {
+    var t = leer_('Contenedores');
+    var repetido = t.filas.filter(function (c) { return c.id !== id && c.numero.toUpperCase() === obj.numero; })[0];
+    if (repetido) throw new Error('Ya existe un contenedor ' + obj.numero + '.');
+    if (id) {
+      var actual = buscar_(t, 'id', id);
+      if (!actual) throw new Error('El contenedor ya no existe.');
+      Object.keys(obj).forEach(function (k) { actual[k] = obj[k]; });
+      escribir_('Contenedores', actual);
+      return id;
+    }
+    obj.id = nuevoId_();
+    obj.estado = 'preparando';
+    obj.creadoPor = user.usuario;
+    obj.fechaCreacion = new Date().toISOString();
+    agregar_('Contenedores', obj);
+    agregarHistorial_('contenedor', obj.id, 'preparando', hoy_(), user.usuario, '');
+    return obj.id;
+  });
+  return jsonOut_({ ok: true, id: final });
+}
+
+/**
+ * Reemplaza lo que lleva un contenedor en preparación. `cargas` es una lista
+ * de { lineaId, cantidad }. Valida que ninguna línea quede con más cantidad
+ * cargada (sumando todos los contenedores) que la pedida.
+ */
+function handleGuardarCargas_(body) {
+  requireEditor_(body);
+  var contenedorId = String(body.contenedorId || '').trim();
+  var entrada = Array.isArray(body.cargas) ? body.cargas : [];
+
+  conLock_(['contenedores', 'pedidos'], function () {
+    var c = buscar_(leer_('Contenedores'), 'id', contenedorId);
+    if (!c) throw new Error('El contenedor ya no existe.');
+    if (normalizarEstadoContenedor_(c.estado) !== 'preparando') {
+      throw new Error('Solo se cambia la carga de un contenedor en preparación.');
+    }
+    var lineas = leer_('PedidoLineas');
+    var pedidos = leer_('Pedidos');
+    var tC = leer_('Cargas');
+    // Lo cargado en OTROS contenedores, por línea.
+    var enOtros = {};
+    tC.filas.forEach(function (x) {
+      if (x.contenedorId !== contenedorId) enOtros[x.lineaId] = (enOtros[x.lineaId] || 0) + Number(x.cantidad || 0);
+    });
+
+    var nuevas = [];
+    var porLinea = {};
+    entrada.forEach(function (e) {
+      var cantidad = numero_(e.cantidad, 'La cantidad');
+      if (!(cantidad > 0)) return;
+      var l = buscar_(lineas, 'id', String(e.lineaId || ''));
+      if (!l) throw new Error('Una de las líneas ya no existe.');
+      var p = buscar_(pedidos, 'id', l.pedidoId);
+      if (!p || p.estado === 'cancelado') throw new Error('No se puede cargar un pedido cancelado.');
+      porLinea[l.id] = (porLinea[l.id] || 0) + cantidad;
+      if (porLinea[l.id] + (enOtros[l.id] || 0) > Number(l.cantidad)) {
+        throw new Error(p.folio + ' / ' + l.codigo + ': se cargaría más de lo pedido (' + l.cantidad + ').');
+      }
+      nuevas.push({ id: nuevoId_(), contenedorId: contenedorId, pedidoId: l.pedidoId, lineaId: l.id, cantidad: cantidad });
+    });
+
+    borrarDonde_('Cargas', 'contenedorId', contenedorId);
+    nuevas.forEach(function (n) { agregar_('Cargas', n); });
+  });
+  return jsonOut_({ ok: true });
+}
+
+function handleCambiarEstadoContenedor_(body) {
+  var user = requireEditor_(body);
+  var estado = String(body.estado || '');
+  if (ESTADOS_CONTENEDOR.indexOf(estado) === -1) throw new Error('Estado de contenedor no válido.');
+  var fecha = fechaCambio_(body.fecha);
+  var nota = texto_(body.nota, 500);
+
+  conLock_(['contenedores', 'pedidos', 'historial'], function () {
+    var c = buscar_(leer_('Contenedores'), 'id', String(body.id || ''));
+    if (!c) throw new Error('El contenedor ya no existe.');
+    if (normalizarEstadoContenedor_(c.estado) === estado) throw new Error('El contenedor ya está en ese estado.');
+    var cargas = leer_('Cargas').filas.filter(function (x) { return x.contenedorId === c.id; });
+    if (estado !== 'preparando' && !cargas.length) throw new Error('El contenedor está vacío: asigna la carga primero.');
+    validarFechaSecuencia_('contenedor', c.id, fecha);
+    c.estado = estado;
+    escribir_('Contenedores', c);
+    agregarHistorial_('contenedor', c.id, estado, fecha, user.usuario, nota);
+    recalcularPedidos_(unicos_(cargas.map(function (x) { return x.pedidoId; })), fecha, user.usuario, c.numero);
+  });
+  return jsonOut_({ ok: true });
+}
+
+function handleBorrarContenedor_(body) {
+  requireEditor_(body);
+  var id = String(body.id || '').trim();
+  conLock_(['contenedores', 'historial'], function () {
+    var c = buscar_(leer_('Contenedores'), 'id', id);
+    if (!c) throw new Error('El contenedor ya no existe.');
+    if (buscar_(leer_('Cargas'), 'contenedorId', id)) throw new Error('Quita la carga del contenedor antes de borrarlo.');
+    borrarHistorial_('contenedor', id);
+    borrarFila_(hoja_('Contenedores'), c._fila);
+  });
+  return jsonOut_({ ok: true });
+}
+
+/**
+ * Estado de cada pedido a partir de sus contenedores ya despachados: el menos
+ * avanzado. Si ninguno salió, vuelve a "fabricado" (si estaba en un estado
+ * heredado). No toca pedidos entregados ni cancelados. Debe llamarse con el lock.
+ */
+function recalcularPedidos_(pedidoIds, fecha, usuario, referencia) {
+  if (!pedidoIds.length) return;
+  var estadoCont = {};
+  leer_('Contenedores').filas.forEach(function (c) { estadoCont[c.id] = normalizarEstadoContenedor_(c.estado); });
+  var cargas = leer_('Cargas').filas;
+  var tP = leer_('Pedidos');
+
+  pedidoIds.forEach(function (pid) {
+    var p = buscar_(tP, 'id', pid);
+    if (!p) return;
+    var actual = normalizarEstadoPedido_(p.estado);
+    if (actual === 'entregado' || actual === 'cancelado') return;
+    var estados = unicos_(cargas.filter(function (x) { return x.pedidoId === pid; })
+      .map(function (x) { return estadoCont[x.contenedorId]; }))
+      .filter(function (e) { return e && e !== 'preparando'; });
+    var nuevo = estadoHeredado_(estados, actual);
+    if (nuevo === actual) return;
+    // Si el contenedor se movió con una fecha anterior al último cambio del pedido, se conserva el orden.
+    var h = historialDe_('pedido', pid);
+    var fechaPedido = h.length && h[h.length - 1].fecha > fecha ? h[h.length - 1].fecha : fecha;
+    p.estado = nuevo;
+    p.fechaEstado = fechaPedido;
+    escribir_('Pedidos', p);
+    agregarHistorial_('pedido', pid, nuevo, fechaPedido, usuario, referencia ? 'Contenedor ' + referencia : '');
+  });
+}
+
+/** Estados de contenedor despachados → estado del pedido. Ver recalcularPedidos_. */
+function estadoHeredado_(estadosContenedor, actual) {
+  if (!estadosContenedor.length) {
+    return ordenPedido_(actual) >= ordenPedido_('embarcado') ? 'fabricado' : actual;
+  }
+  var min = estadosContenedor.reduce(function (m, e) {
+    return ESTADOS_CONTENEDOR.indexOf(e) < ESTADOS_CONTENEDOR.indexOf(m) ? e : m;
+  });
+  return min; // embarcado, en_transito, en_puerto y desembarcado se llaman igual en ambos
+}
+
+// ---------- Historial ----------
+
+function agregarHistorial_(entidad, entidadId, estado, fecha, usuario, nota) {
+  agregar_('Historial', {
+    id: nuevoId_(), entidad: entidad, entidadId: entidadId, estado: estado, fecha: fecha,
+    usuario: usuario, nota: nota || '', registrado: new Date().toISOString()
+  });
+}
+
+/** Cambios de estado en orden de registro (el último es el que dejó el estado actual). */
+function historialDe_(entidad, entidadId) {
+  return leer_('Historial').filas.filter(function (h) { return h.entidad === entidad && h.entidadId === entidadId; });
+}
+
+/**
+ * La fecha de un cambio no puede ser anterior a la del cambio previo, para que
+ * la línea de tiempo sea coherente. Un contenedor nace «preparando» con la fecha
+ * de alta, que no cuenta (se puede registrar su embarque con fecha pasada).
+ */
+function validarFechaSecuencia_(entidad, entidadId, fecha) {
+  var h = historialDe_(entidad, entidadId);
+  var previo = h[h.length - 1];
+  if (!previo || (entidad === 'contenedor' && h.length === 1)) return;
+  if (fecha < previo.fecha) {
+    throw new Error('La fecha no puede ser anterior al estado previo (' + previo.fecha.split('-').reverse().join('/') + ').');
+  }
+}
+
+function handleListHistorial_(body) {
+  requireAuth_(body);
+  var nombres = mapaNombres_();
+  var lista = historialDe_(String(body.entidad || ''), String(body.entidadId || '')).map(function (h) {
+    var x = limpiar_(h);
+    x.usuarioNombre = nombreDe_(nombres, h.usuario);
+    return x;
+  });
+  return jsonOut_({ ok: true, historial: lista });
+}
+
+function borrarHistorial_(entidad, entidadId) {
+  var sheet = hoja_('Historial');
+  leer_('Historial').filas.filter(function (h) { return h.entidad === entidad && h.entidadId === entidadId; })
+    .sort(function (a, b) { return b._fila - a._fila; })
+    .forEach(function (h) { borrarFila_(sheet, h._fila); });
+}
+
+/**
+ * Solo el admin: quita el último cambio de estado y vuelve al anterior.
+ * En un contenedor se recalculan sus pedidos; en un pedido solo se deshacen
+ * cambios manuales (los heredados se deshacen desde el contenedor).
+ */
+function handleDeshacerEstado_(body) {
+  var user = requireAdmin_(body);
+  var entidad = String(body.entidad || '');
+  var id = String(body.id || '');
+  if (entidad !== 'pedido' && entidad !== 'contenedor') throw new Error('Entidad no válida.');
+
+  conLock_(['pedidos', 'contenedores', 'historial'], function () {
+    var hist = historialDe_(entidad, id);
+    if (hist.length < 2) throw new Error('No hay un cambio anterior al que volver.');
+    var ultimo = hist[hist.length - 1];
+    var anterior = hist[hist.length - 2];
+    if (entidad === 'pedido') {
+      var p = buscar_(leer_('Pedidos'), 'id', id);
+      if (!p) throw new Error('El pedido ya no existe.');
+      if (MANUALES_PEDIDO.indexOf(ultimo.estado) === -1) {
+        throw new Error('Ese estado lo puso un contenedor: deshazlo desde el contenedor.');
+      }
+      p.estado = anterior.estado;
+      p.fechaEstado = anterior.fecha;
+      escribir_('Pedidos', p);
+      borrarFila_(hoja_('Historial'), ultimo._fila);
+      // Si el estado al que vuelve lo daban los contenedores, puede haber quedado desactualizado.
+      recalcularPedidos_([id], anterior.fecha, user.usuario, '');
+    } else {
+      var c = buscar_(leer_('Contenedores'), 'id', id);
+      if (!c) throw new Error('El contenedor ya no existe.');
+      c.estado = anterior.estado;
+      escribir_('Contenedores', c);
+      borrarFila_(hoja_('Historial'), ultimo._fila);
+      var pedidos = unicos_(leer_('Cargas').filas.filter(function (x) { return x.contenedorId === id; })
+        .map(function (x) { return x.pedidoId; }));
+      recalcularPedidos_(pedidos, anterior.fecha, user.usuario, c.numero + ' (deshecho)');
+    }
+  });
+  return jsonOut_({ ok: true });
+}
+
+// ---------- Configuración ----------
+
+var CONFIG_EDITABLE = ['tipoCambio'];
+
+function leerConfig_() {
+  var cfg = {};
+  leer_('Config').filas.forEach(function (r) { if (r.clave) cfg[r.clave] = r.valor; });
+  return cfg;
+}
+
+function guardarConfig_(clave, valor) {
+  var t = leer_('Config');
+  var fila = buscar_(t, 'clave', clave);
+  if (fila) {
+    fila.valor = valor;
+    escribir_('Config', fila);
+  } else {
+    agregar_('Config', { clave: clave, valor: valor });
+  }
+}
+
+function handleGetConfig_(body) {
+  requireAuth_(body);
+  var cfg = leerConfig_();
+  return jsonOut_({ ok: true, config: [{ tipoCambio: Number(cfg.tipoCambio) || 0 }] });
+}
+
+function handleSetConfig_(body) {
+  requireAdmin_(body);
+  var clave = String(body.clave || '');
+  if (CONFIG_EDITABLE.indexOf(clave) === -1) throw new Error('Configuración no editable.');
+  var valor = numero_(body.valor, 'El tipo de cambio');
+  if (!(valor > 0)) throw new Error('El tipo de cambio debe ser mayor que cero.');
+  conLock_(['config'], function () { guardarConfig_(clave, String(valor)); });
+  return jsonOut_({ ok: true });
+}
+
+// ---------- Archivos (Google Drive) ----------
+
+var ENTIDADES_ARCHIVO = { producto: 'Productos', pedido: 'Pedidos' };
+
+function handleListArchivos_(body) {
+  requireAuth_(body);
+  var nombres = mapaNombres_();
+  var entidad = String(body.entidad || '');
+  var entidadId = String(body.entidadId || '');
+  var lista = leer_('Archivos').filas.filter(function (a) { return a.entidad === entidad && a.entidadId === entidadId; })
+    .map(function (a) {
+      var x = limpiar_(a);
+      x.subidoNombre = nombreDe_(nombres, a.subidoPor);
+      return x;
+    });
+  lista.sort(function (a, b) {
+    if (a.principal !== b.principal) return a.principal ? -1 : 1;
+    return String(a.fecha).localeCompare(String(b.fecha));
+  });
+  return jsonOut_({ ok: true, archivos: lista });
+}
+
+function handleSubirArchivo_(body) {
+  var user = requireEditor_(body);
+  var entidad = String(body.entidad || '');
+  var entidadId = String(body.entidadId || '');
+  if (!ENTIDADES_ARCHIVO[entidad]) throw new Error('No se pueden adjuntar archivos aquí.');
+  var registro = buscar_(leer_(ENTIDADES_ARCHIVO[entidad]), 'id', entidadId);
+  if (!registro) throw new Error('El registro ya no existe.');
+
+  var nombre = texto_(body.nombre, 150).replace(/[\\/]/g, '-') || 'archivo';
+  var mime = texto_(body.mime, 100) || 'application/octet-stream';
+  var bytes = Utilities.base64Decode(String(body.base64 || ''));
+  if (!bytes.length) throw new Error('El archivo está vacío.');
+  if (bytes.length > MAX_ARCHIVO_BYTES) throw new Error('El archivo supera los 10 MB.');
+
+  // Drive se escribe fuera del lock (puede tardar); la fila, dentro.
+  var nombreCarpeta = entidad === 'producto' ? registro.codigo : registro.folio;
+  var carpeta = subcarpeta_(entidad === 'producto' ? 'Productos' : 'Pedidos', nombreCarpeta);
+  var archivo = carpeta.createFile(Utilities.newBlob(bytes, mime, nombre));
+  try {
+    archivo.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (e) {
+    // Algunas cuentas de Workspace no permiten compartir por enlace: el archivo queda privado.
+  }
+
+  var revs = entidad === 'producto' ? ['archivos', 'productos'] : ['archivos'];
+  conLock_(revs, function () {
+    var esImagen = mime.indexOf('image/') === 0;
+    var yaHayPrincipal = leer_('Archivos').filas.some(function (a) {
+      return a.entidad === entidad && a.entidadId === entidadId && a.principal;
+    });
+    agregar_('Archivos', {
+      id: nuevoId_(), entidad: entidad, entidadId: entidadId, driveId: archivo.getId(), nombre: nombre,
+      mime: mime, bytes: bytes.length, principal: entidad === 'producto' && esImagen && !yaHayPrincipal,
+      subidoPor: user.usuario, fecha: new Date().toISOString()
+    });
+  });
+  return jsonOut_({ ok: true, driveId: archivo.getId() });
+}
+
+function handleMarcarPrincipal_(body) {
+  requireEditor_(body);
+  conLock_(['archivos', 'productos'], function () {
+    var t = leer_('Archivos');
+    var a = buscar_(t, 'id', String(body.id || ''));
+    if (!a) throw new Error('El archivo ya no existe.');
+    if (a.entidad !== 'producto' || a.mime.indexOf('image/') !== 0) throw new Error('Solo una foto de producto puede ser la principal.');
+    t.filas.forEach(function (x) {
+      if (x.entidad !== a.entidad || x.entidadId !== a.entidadId) return;
+      var debe = x.id === a.id;
+      if (x.principal !== debe) {
+        x.principal = debe;
+        escribir_('Archivos', x);
+      }
+    });
+  });
+  return jsonOut_({ ok: true });
+}
+
+function handleBorrarArchivo_(body) {
+  requireEditor_(body);
+  conLock_(['archivos', 'productos'], function () {
+    var a = buscar_(leer_('Archivos'), 'id', String(body.id || ''));
+    if (!a) throw new Error('El archivo ya no existe.');
+    papelera_(a.driveId);
+    borrarFila_(hoja_('Archivos'), a._fila);
+  });
+  return jsonOut_({ ok: true });
+}
+
+/** Manda a la papelera de Drive y borra las filas de los archivos de un registro. Con el lock. */
+function borrarArchivosDe_(entidad, entidadId) {
+  var sheet = hoja_('Archivos');
+  leer_('Archivos').filas.filter(function (a) { return a.entidad === entidad && a.entidadId === entidadId; })
+    .sort(function (a, b) { return b._fila - a._fila; })
+    .forEach(function (a) {
+      papelera_(a.driveId);
+      borrarFila_(sheet, a._fila);
+    });
+}
+
+function papelera_(driveId) {
+  try {
+    DriveApp.getFileById(driveId).setTrashed(true);
+  } catch (e) {
+    // Ya no existe en Drive o se movió: solo se borra la fila.
+  }
+}
+
+/** Carpeta raíz de la app (la crea `instalar`). */
+function carpetaRaiz_() {
+  var id = leerConfig_().carpetaDriveId;
+  if (id) {
+    try {
+      return DriveApp.getFolderById(id);
+    } catch (e) {
+      throw new Error('No se encuentra la carpeta de archivos en Drive. Ejecuta "instalar" de nuevo.');
+    }
+  }
+  throw new Error('Falta la carpeta de archivos en Drive. Ejecuta "instalar".');
+}
+
+/** raíz/<tipo>/<nombre>, creándola si falta. */
+function subcarpeta_(tipo, nombre) {
+  var t = hijaPorNombre_(carpetaRaiz_(), tipo);
+  return hijaPorNombre_(t, String(nombre || 'sin-nombre'));
+}
+
+function hijaPorNombre_(padre, nombre) {
+  var it = padre.getFoldersByName(nombre);
+  return it.hasNext() ? it.next() : padre.createFolder(nombre);
+}
+
+// ---------- Instalación ----------
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Pedidos ON')
+    .addItem('Instalar / reparar hoja', 'instalar')
+    .addToUi();
+}
+
+/**
+ * Crea las pestañas y encabezados que falten, formatos, validaciones, la
+ * carpeta de Drive, el tipo de cambio inicial y un admin si no hay ninguno.
+ * Es idempotente: se puede ejecutar varias veces sin pisar datos.
+ */
+function instalar() {
+  var ss = getSpreadsheet_(true);
+  var creadas = [];
+
+  Object.keys(ENCABEZADOS).forEach(function (nombre) {
+    var sheet = ss.getSheetByName(nombre);
+    if (!sheet) {
+      var primera = ss.getSheets()[0];
+      var vacia = ss.getSheets().length === 1 && primera.getLastRow() === 0 && primera.getName() !== nombre;
+      sheet = vacia ? primera.setName(nombre) : ss.insertSheet(nombre);
+      creadas.push(nombre);
+    }
+    var cols = ENCABEZADOS[nombre];
+    sheet.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold').setBackground('#e8eaf6');
+    sheet.setFrozenRows(1);
+    // Texto plano salvo números y casillas: así Sheets no convierte fechas ni códigos como "0012".
+    cols.forEach(function (c, i) {
+      if (NUMERICAS.indexOf(c) === -1 && CASILLAS.indexOf(c) === -1) {
+        sheet.getRange(2, i + 1, sheet.getMaxRows() - 1, 1).setNumberFormat('@');
+      }
+    });
+  });
+
+  aplicarValidaciones_(ss);
+  var mensaje = creadas.length ? 'Pestañas creadas: ' + creadas.join(', ') + '. ' : 'Las pestañas ya existían. ';
+
+  var cfg = leerConfig_();
+  if (!cfg.tipoCambio) {
+    guardarConfig_('tipoCambio', '7500');
+    mensaje += 'Tipo de cambio inicial: 7500 Gs/USD (cámbialo en Catálogos). ';
+  }
+  var carpetaOk = false;
+  if (cfg.carpetaDriveId) {
+    try { DriveApp.getFolderById(cfg.carpetaDriveId); carpetaOk = true; } catch (e) {}
+  }
+  if (!carpetaOk) {
+    var carpeta = DriveApp.createFolder(CARPETA_RAIZ);
+    hijaPorNombre_(carpeta, 'Productos');
+    hijaPorNombre_(carpeta, 'Pedidos');
+    guardarConfig_('carpetaDriveId', carpeta.getId());
+    mensaje += 'Carpeta de Drive creada: ' + carpeta.getUrl() + ' . ';
+  }
+
+  if (contarAdminsActivos_() === 0) {
+    var password = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
+    agregar_('Usuarios', { usuario: 'ADMIN', password: password, rol: 'admin', activo: true, nombre: '' });
+    mensaje += 'Admin inicial: usuario ADMIN, contraseña ' + password +
+      ' (también está en la pestaña Usuarios; cámbiala al entrar). ';
+  }
+
+  mensaje += 'Hoja: ' + ss.getUrl();
+  Logger.log(mensaje);
+  try { ss.toast(mensaje, 'Pedidos ON', 30); } catch (e) {}
+  return mensaje;
+}
+
+/** Listas desplegables y casillas para que editar a mano la hoja no rompa valores. */
+function aplicarValidaciones_(ss) {
+  var lista = function (valores) {
+    return SpreadsheetApp.newDataValidation().requireValueInList(valores, true).setAllowInvalid(false).build();
+  };
+  var casilla = SpreadsheetApp.newDataValidation().requireCheckbox().build();
+  var filas = 1000;
+  var poner = function (hoja, col, regla) {
+    ss.getSheetByName(hoja).getRange(2, ENCABEZADOS[hoja].indexOf(col) + 1, filas, 1).setDataValidation(regla);
+  };
+  Object.keys(ENCABEZADOS).forEach(function (h) {
+    CASILLAS.forEach(function (c) { if (ENCABEZADOS[h].indexOf(c) !== -1) poner(h, c, casilla); });
+  });
+  poner('Usuarios', 'rol', lista(ROLES));
+  poner('Pedidos', 'estado', lista(ESTADOS_PEDIDO));
+  poner('Contenedores', 'estado', lista(ESTADOS_CONTENEDOR));
+  poner('Contenedores', 'tipo', lista(TIPOS_CONTENEDOR));
+}
+
+// ---------- Acceso a la hoja ----------
+// Cada pestaña se lee como objetos con las claves de ENCABEZADOS (más `_fila`,
+// el número de fila 1-based) y se escribe con el mismo orden de columnas.
+
+function getSpreadsheet_(crear) {
+  var activa = SpreadsheetApp.getActiveSpreadsheet();
+  if (activa) return activa;
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('SPREADSHEET_ID');
+  if (id) {
+    try {
+      return SpreadsheetApp.openById(id);
+    } catch (e) {
+      throw new Error('No se pudo abrir la hoja (SPREADSHEET_ID). Revisa el ID y los permisos.');
+    }
+  }
+  if (!crear) throw new Error('El backend no está configurado: ejecuta la función "instalar" una vez.');
+  var ss = SpreadsheetApp.create('Pedidos ON');
+  props.setProperty('SPREADSHEET_ID', ss.getId());
+  Logger.log('Hoja creada: ' + ss.getUrl());
+  return ss;
+}
+
+function hoja_(nombre) {
+  var sheet = getSpreadsheet_(false).getSheetByName(nombre);
+  if (!sheet) throw new Error('No existe la pestaña "' + nombre + '" en la hoja de cálculo. Ejecuta "instalar".');
+  return sheet;
+}
+
+function leer_(nombre) {
+  var sheet = hoja_(nombre);
+  var cols = ENCABEZADOS[nombre];
+  var rows = sheet.getDataRange().getValues();
+  var filas = [];
+  for (var i = 1; i < rows.length; i++) {
+    var o = { _fila: i + 1 };
+    for (var j = 0; j < cols.length; j++) o[cols[j]] = valorCelda_(cols[j], rows[i][j]);
+    filas.push(o);
+  }
+  return { sheet: sheet, filas: filas };
+}
+
+function valorCelda_(col, v) {
+  if (CASILLAS.indexOf(col) !== -1) return esActivo_(v);
+  if (NUMERICAS.indexOf(col) !== -1) return Number(v) || 0;
+  if (v instanceof Date) {
+    // Si Sheets convirtió una celda en fecha: las de solo día vuelven a 'yyyy-MM-dd', el resto a ISO.
+    return FECHAS_DIA.indexOf(col) !== -1 ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd') : v.toISOString();
+  }
+  return String(v == null ? '' : v).trim();
+}
+
+function aFila_(nombre, obj) {
+  return ENCABEZADOS[nombre].map(function (c) {
+    var v = obj[c];
+    if (CASILLAS.indexOf(c) !== -1) return v === true;
+    if (NUMERICAS.indexOf(c) !== -1) return Number(v) || 0;
+    return v == null ? '' : String(v);
+  });
+}
+
+function agregar_(nombre, obj) {
+  hoja_(nombre).appendRow(aFila_(nombre, obj));
+}
+
+function escribir_(nombre, obj) {
+  var fila = aFila_(nombre, obj);
+  hoja_(nombre).getRange(obj._fila, 1, 1, fila.length).setValues([fila]);
+}
+
+function buscar_(tabla, col, valor) {
+  var v = String(valor || '');
+  if (!v) return null;
+  for (var i = 0; i < tabla.filas.length; i++) {
+    if (tabla.filas[i][col] === v) return tabla.filas[i];
+  }
+  return null;
+}
+
+/** Borra todas las filas donde `col` = valor (de abajo hacia arriba). */
+function borrarDonde_(nombre, col, valor) {
+  var sheet = hoja_(nombre);
+  leer_(nombre).filas.filter(function (r) { return r[col] === valor; })
+    .sort(function (a, b) { return b._fila - a._fila; })
+    .forEach(function (r) { borrarFila_(sheet, r._fila); });
+}
+
+/**
+ * Borra una fila. Sheets no deja eliminar todas las filas no inmovilizadas:
+ * si solo queda una fila de datos, se agrega una vacía antes de borrar.
+ */
+function borrarFila_(sheet, fila) {
+  if (sheet.getMaxRows() - sheet.getFrozenRows() <= 1) sheet.insertRowAfter(sheet.getMaxRows());
+  sheet.deleteRow(fila);
+}
+
+/** Copia sin `_fila`, para mandar al frontend. */
+function limpiar_(o) {
+  var x = {};
+  Object.keys(o).forEach(function (k) { if (k !== '_fila') x[k] = o[k]; });
+  return x;
+}
+
+function mapaNombresCatalogo_(hoja) {
+  var m = {};
+  leer_(hoja).filas.forEach(function (r) { m[r.id] = r.nombre; });
+  return m;
+}
+
+/** Cantidad cargada en contenedores, por id de línea. */
+function cargadoPorLinea_() {
+  var m = {};
+  leer_('Cargas').filas.forEach(function (c) { m[c.lineaId] = (m[c.lineaId] || 0) + Number(c.cantidad || 0); });
+  return m;
+}
+
+function validarReferencia_(hoja, id, etiqueta) {
+  if (!id) return;
+  var r = buscar_(leer_(hoja), 'id', id);
+  if (!r) throw new Error(etiqueta + ' no existe.');
+}
+
+// ---------- Normalización ----------
+
+function nuevoId_() { return Utilities.getUuid().replace(/-/g, '').slice(0, 12); }
+
+function texto_(v, max) { return String(v == null ? '' : v).trim().slice(0, max); }
+
+/** Número >= 0; vacío = 0. Acepta coma decimal. */
+function numero_(v, etiqueta) {
+  if (v === '' || v == null) return 0;
+  var n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'));
+  if (isNaN(n) || n < 0) throw new Error(etiqueta + ' no es un número válido.');
+  return Math.round(n * 10000) / 10000;
+}
+
+function hoy_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+
+function fechaValida_(s) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  var p = s.split('-');
+  var d = new Date(Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2])));
+  return d.toISOString().slice(0, 10) === s;
+}
+
+/** Fecha de un cambio de estado: la indicada (no futura) o hoy. */
+function fechaCambio_(v) {
+  var f = texto_(v, 10);
+  if (!f) return hoy_();
+  if (!fechaValida_(f)) throw new Error('La fecha del cambio no es válida.');
+  if (f > hoy_()) throw new Error('La fecha del cambio no puede ser futura.');
+  return f;
+}
+
+function normalizarRol_(valor) {
+  var r = String(valor || '').trim().toLowerCase();
+  return ROLES.indexOf(r) === -1 ? 'consulta' : r;
+}
+
+function normalizarEstadoPedido_(v) {
+  var e = String(v || '').trim().toLowerCase();
+  return ESTADOS_PEDIDO.indexOf(e) === -1 ? 'registrado' : e;
+}
+
+function normalizarEstadoContenedor_(v) {
+  var e = String(v || '').trim().toLowerCase();
+  return ESTADOS_CONTENEDOR.indexOf(e) === -1 ? 'preparando' : e;
+}
+
+function ordenPedido_(estado) { return ESTADOS_PEDIDO.indexOf(estado); }
+
+function unicos_(lista) {
+  var visto = {};
+  return lista.filter(function (x) {
+    if (visto[x]) return false;
+    visto[x] = true;
+    return true;
+  });
+}
+
+/** Acepta TRUE, SI, SÍ, X o 1 (casilla de verificación) como verdadero. */
+function esActivo_(valor) {
+  if (valor === true) return true;
+  if (valor === false) return false;
+  var t = String(valor).trim().toUpperCase().replace('Í', 'I');
+  return t === 'TRUE' || t === 'SI' || t === 'X' || t === '1';
+}
+
+function jsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
