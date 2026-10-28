@@ -17,6 +17,13 @@ import { useProductos } from '@/hooks/useProductos'
 import { formatGs, formatUsd, normalizar } from '@/lib/format'
 import type { Producto } from '@/lib/tipos'
 
+/** '38 · 39 · 40' para pocos; '36 … 44 (9)' si son muchos. */
+function resumenTamanos(ids: string[], nombres: Map<string, string>): string {
+  const lista = ids.map((id) => nombres.get(id) ?? '?')
+  if (lista.length === 0) return '—'
+  return lista.length <= 6 ? lista.join(' · ') : `${lista[0]} … ${lista[lista.length - 1]} (${lista.length})`
+}
+
 export default function Productos() {
   const { puedeEditar } = useAuth()
   const { data, loading, error, refetch, borrar } = useProductos()
@@ -39,7 +46,7 @@ export default function Productos() {
       if (marcaId && p.marcaId !== marcaId) return false
       if (proveedorId && p.proveedorId !== proveedorId) return false
       if (!q) return true
-      return normalizar(`${p.codigo} ${p.descripcion} ${p.color}`).includes(q)
+      return normalizar(`${p.codigo} ${p.descripcion} ${p.colores.join(' ')}`).includes(q)
     })
   }, [data, busqueda, marcaId, proveedorId, verInactivos])
 
@@ -122,9 +129,9 @@ export default function Productos() {
                   <th className="w-14 px-4 py-2.5 font-medium"></th>
                   <th className="px-4 py-2.5 font-medium">Código</th>
                   <th className="px-4 py-2.5 font-medium">Descripción</th>
-                  <th className="px-4 py-2.5 font-medium">Color</th>
+                  <th className="px-4 py-2.5 font-medium">Colores</th>
                   <th className="px-4 py-2.5 font-medium">Marca</th>
-                  <th className="px-4 py-2.5 font-medium">Tamaño</th>
+                  <th className="px-4 py-2.5 font-medium">Tamaños</th>
                   <th className="px-4 py-2.5 text-right font-medium">Costo</th>
                   <th className="px-4 py-2.5 text-right font-medium">Venta USD</th>
                   <th className="px-4 py-2.5 text-right font-medium">Venta Gs</th>
@@ -168,9 +175,9 @@ export default function Productos() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-foreground">{p.descripcion}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{p.color || '—'}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{p.colores.join(', ') || '—'}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">{nombreMarca.get(p.marcaId) ?? '—'}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{nombreTamano.get(p.tamanoId) ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{resumenTamanos(p.tamanoIds, nombreTamano)}</td>
                     <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-muted-foreground">{formatUsd(p.precioCosto)}</td>
                     <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-foreground">{formatUsd(p.precioVentaUsd)}</td>
                     <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-foreground">{formatGs(p.precioVentaGs)}</td>

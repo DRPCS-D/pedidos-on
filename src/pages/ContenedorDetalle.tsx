@@ -194,7 +194,7 @@ export default function ContenedorDetalle() {
                         return (
                           <tr key={lineaId} className="border-t border-border first:border-0">
                             <td className="whitespace-nowrap px-5 py-2 font-medium text-foreground">{l?.codigo ?? '—'}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{l ? `${l.descripcion}${l.color ? ` · ${l.color}` : ''}` : ''}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{l ? [l.descripcion, l.color, l.tamano].filter(Boolean).join(' · ') : ''}</td>
                             <td className="tabular px-5 py-2 text-right text-foreground">
                               {formatCantidad(cantidad)}
                               {l && cantidad < l.cantidad && (

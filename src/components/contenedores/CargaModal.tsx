@@ -10,7 +10,7 @@ import { useCatalogo } from '@/hooks/useCatalogo'
 import { useContenedores } from '@/hooks/useContenedores'
 import { usePedidos } from '@/hooks/usePedidos'
 import { formatCantidad, normalizar } from '@/lib/format'
-import { pendienteLinea } from '@/lib/pedidos'
+import { agruparPorProducto, pendienteLinea } from '@/lib/pedidos'
 import type { Contenedor } from '@/lib/tipos'
 
 /**
@@ -62,7 +62,7 @@ export function CargaModal({
       .filter((p) => p.estado !== 'cancelado' && p.estado !== 'entregado')
       .map((p) => ({
         p,
-        lineas: p.lineas
+        lineas: agruparPorProducto(p.lineas)
           .map((l) => ({ l, maximo: pendienteLinea(l) + (enEste.get(l.id) ?? 0) }))
           .filter((x) => x.maximo > 0),
       }))
@@ -176,7 +176,7 @@ export function CargaModal({
                         <span className="font-medium text-foreground">{l.codigo}</span>{' '}
                         <span className="text-xs text-muted-foreground">
                           {l.descripcion}
-                          {l.color && ` · ${l.color}`}
+                          {[l.color, l.tamano].filter(Boolean).map((x) => ` · ${x}`).join('')}
                         </span>
                       </td>
                       <td className="tabular whitespace-nowrap px-3 py-1.5 text-right text-xs text-muted-foreground">

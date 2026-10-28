@@ -1,4 +1,4 @@
-import { Plus, Search, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -9,22 +9,40 @@ import { useCatalogo } from '@/hooks/useCatalogo'
 import { usePedidos, type DatosLinea } from '@/hooks/usePedidos'
 import { useProductos } from '@/hooks/useProductos'
 import { formatGs, formatUsd, hoyIso, normalizar } from '@/lib/format'
+import {
+  claveCelda,
+  claveDeLinea,
+  ejesGrilla,
+  llenarGrilla,
+  totalGrilla,
+  type EjesGrilla,
+  type TamanoRef,
+} from '@/lib/grilla'
 import { totalesLineas } from '@/lib/pedidos'
 import type { Pedido, Producto } from '@/lib/tipos'
 
-/** Línea en edición: los números son texto para poder escribir «1,» sin que se pierda. */
-interface LineaForm {
+/**
+ * Un producto dentro del pedido, con su grilla color × tamaño. Cada celda con
+ * cantidad es una línea del pedido; los precios valen para todas. Los números
+ * son texto para poder escribir «1,» sin que se pierda.
+ */
+interface GrupoForm {
   clave: string
-  id: string
   productoId: string
   codigo: string
   descripcion: string
   detalle: string
-  cantidad: string
+  ejes: EjesGrilla
+  cantidades: Record<string, string>
+  /** Id de la línea ya guardada de cada celda. */
+  ids: Record<string, string>
+  /** Cantidad ya cargada en contenedores de cada celda. */
+  cargados: Record<string, number>
   precioCosto: string
   precioVentaUsd: string
   precioVentaGs: string
-  cargado: number
+  /** Texto del campo «misma cantidad en todos». */
+  parejo: string
 }
 
 const num = (s: string) => Number(s.replace(',', '.')) || 0
@@ -45,17 +63,54 @@ export function PedidoFormModal({
 }) {
   const { data: proveedores } = useCatalogo('proveedores')
   const { data: clientes } = useCatalogo('clientes')
-  const { data: productos } = useProductos()
+  const { nombres: marcas } = useCatalogo('marcas')
+  const { nombres: nombreTamano } = useCatalogo('tamanos')
+  const { data: productos, porId } = useProductos()
   const { guardar, refetch } = usePedidos()
 
   const [proveedorId, setProveedorId] = useState('')
   const [clienteId, setClienteId] = useState('')
   const [fecha, setFecha] = useState(hoyIso())
   const [notas, setNotas] = useState('')
-  const [lineas, setLineas] = useState<LineaForm[]>([])
+  const [grupos, setGrupos] = useState<GrupoForm[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
+
+  const tamanosDe = (p: Producto): TamanoRef[] =>
+    p.tamanoIds.map((id) => ({ id, nombre: nombreTamano.get(id) ?? '?' }))
+
+  /** Arma los grupos de un pedido guardado: una línea = una celda del producto. */
+  function gruposDe(ped: Pedido): GrupoForm[] {
+    const porProducto = new Map<string, Pedido['lineas']>()
+    for (const l of ped.lineas) porProducto.set(l.productoId, [...(porProducto.get(l.productoId) ?? []), l])
+    return [...porProducto.entries()].map(([productoId, lineas]) => {
+      const prod = porId.get(productoId)
+      const ejes = ejesGrilla(prod?.colores ?? [], prod ? tamanosDe(prod) : [], lineas)
+      const g: GrupoForm = {
+        clave: productoId,
+        productoId,
+        codigo: lineas[0].codigo,
+        descripcion: lineas[0].descripcion,
+        detalle: lineas[0].marca,
+        ejes,
+        cantidades: {},
+        ids: {},
+        cargados: {},
+        precioCosto: texto(lineas[0].precioCosto),
+        precioVentaUsd: texto(lineas[0].precioVentaUsd),
+        precioVentaGs: texto(lineas[0].precioVentaGs),
+        parejo: '',
+      }
+      for (const l of lineas) {
+        const k = claveDeLinea(ejes, l)
+        g.cantidades[k] = String(l.cantidad)
+        g.ids[k] = l.id
+        g.cargados[k] = l.cargado
+      }
+      return g
+    })
+  }
 
   useEffect(() => {
     if (!abierto) return
@@ -63,100 +118,107 @@ export function PedidoFormModal({
     setClienteId(pedido?.clienteId ?? '')
     setFecha(pedido?.fechaPedido || hoyIso())
     setNotas(pedido?.notas ?? '')
-    setLineas(
-      (pedido?.lineas ?? []).map((l) => ({
-        clave: l.id,
-        id: l.id,
-        productoId: l.productoId,
-        codigo: l.codigo,
-        descripcion: l.descripcion,
-        detalle: [l.color, l.marca, l.tamano].filter(Boolean).join(' · '),
-        cantidad: texto(l.cantidad),
-        precioCosto: texto(l.precioCosto),
-        precioVentaUsd: texto(l.precioVentaUsd),
-        precioVentaGs: texto(l.precioVentaGs),
-        cargado: l.cargado,
-      })),
-    )
+    setGrupos(pedido ? gruposDe(pedido) : [])
     setBusqueda('')
     setError(null)
     // Solo al abrir o cambiar de pedido: una sincronización de fondo no debe borrar lo que se escribe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto, pedido?.id])
 
-  const { nombres: marcas } = useCatalogo('marcas')
-  const { nombres: tamanos } = useCatalogo('tamanos')
-
   /** Productos activos que coinciden; los de la fábrica elegida salen primero. */
   const sugeridos = useMemo(() => {
     const q = normalizar(busqueda)
     if (!q) return []
     return productos
-      .filter((p) => p.activo && normalizar(`${p.codigo} ${p.descripcion} ${p.color}`).includes(q))
+      .filter((p) => p.activo && normalizar(`${p.codigo} ${p.descripcion} ${p.colores.join(' ')}`).includes(q))
       .sort((a, b) => Number(b.proveedorId === proveedorId) - Number(a.proveedorId === proveedorId))
       .slice(0, 8)
   }, [productos, busqueda, proveedorId])
 
   function agregar(p: Producto) {
-    if (lineas.some((l) => l.productoId === p.id)) {
+    if (grupos.some((g) => g.productoId === p.id)) {
       toast.info(`${p.codigo} ya está en el pedido.`)
       return
     }
-    setLineas([
-      ...lineas,
+    const ejes = ejesGrilla(p.colores, tamanosDe(p), [])
+    // Sin colores ni tamaños es una sola celda: ya viene con 1 unidad.
+    const sinVariantes = ejes.colores.length === 1 && ejes.tamanos.length === 1 && !ejes.colores[0] && !ejes.tamanos[0].id
+    setGrupos((gs) => [
+      ...gs,
       {
         clave: `n${Date.now()}`,
-        id: '',
         productoId: p.id,
         codigo: p.codigo,
         descripcion: p.descripcion,
-        detalle: [p.color, marcas.get(p.marcaId), tamanos.get(p.tamanoId)].filter(Boolean).join(' · '),
-        cantidad: '1',
+        detalle: marcas.get(p.marcaId) ?? '',
+        ejes,
+        cantidades: sinVariantes ? { [claveCelda('', '')]: '1' } : {},
+        ids: {},
+        cargados: {},
         precioCosto: texto(p.precioCosto),
         precioVentaUsd: texto(p.precioVentaUsd),
         precioVentaGs: texto(p.precioVentaGs),
-        cargado: 0,
+        parejo: '',
       },
     ])
     setBusqueda('')
   }
 
-  const cambiar = (clave: string, campo: keyof LineaForm, valor: string) =>
-    setLineas((ls) => ls.map((l) => (l.clave === clave ? { ...l, [campo]: valor } : l)))
+  const cambiar = (clave: string, parche: Partial<GrupoForm>) =>
+    setGrupos((gs) => gs.map((g) => (g.clave === clave ? { ...g, ...parche } : g)))
+
+  const cambiarCelda = (g: GrupoForm, k: string, valor: string) =>
+    cambiar(g.clave, { cantidades: { ...g.cantidades, [k]: valor } })
 
   const totales = totalesLineas(
-    lineas.map((l) => ({
-      cantidad: num(l.cantidad),
-      precioCosto: num(l.precioCosto),
-      precioVentaUsd: num(l.precioVentaUsd),
-      precioVentaGs: num(l.precioVentaGs),
+    grupos.map((g) => ({
+      cantidad: totalGrilla(g.cantidades),
+      precioCosto: num(g.precioCosto),
+      precioVentaUsd: num(g.precioVentaUsd),
+      precioVentaGs: num(g.precioVentaGs),
     })),
   )
 
   async function onGuardar() {
     if (!proveedorId) return setError('Elige la fábrica (proveedor).')
     if (!fecha) return setError('Indica la fecha del pedido.')
-    if (lineas.length === 0) return setError('Agrega al menos un producto.')
-    for (const l of lineas) {
-      if (!(num(l.cantidad) > 0)) return setError(`${l.codigo}: la cantidad debe ser mayor que cero.`)
-      if (num(l.cantidad) < l.cargado) return setError(`${l.codigo}: ya hay ${l.cargado} cargados en contenedores.`)
+    if (grupos.length === 0) return setError('Agrega al menos un producto.')
+
+    const lineas: DatosLinea[] = []
+    for (const g of grupos) {
+      let conCantidad = 0
+      for (const color of g.ejes.colores) {
+        for (const t of g.ejes.tamanos) {
+          const k = claveCelda(color, t.id)
+          const cantidad = num(g.cantidades[k] ?? '')
+          const etiqueta = [g.codigo, color, t.nombre].filter(Boolean).join(' ')
+          if (cantidad < 0) return setError(`${etiqueta}: la cantidad no puede ser negativa.`)
+          if (cantidad < (g.cargados[k] ?? 0)) return setError(`${etiqueta}: ya hay ${g.cargados[k]} cargados en contenedores.`)
+          if (cantidad === 0) continue
+          conCantidad++
+          lineas.push({
+            id: g.ids[k] ?? '',
+            productoId: g.productoId,
+            color,
+            tamanoId: t.id,
+            cantidad,
+            precioCosto: num(g.precioCosto),
+            precioVentaUsd: num(g.precioVentaUsd),
+            precioVentaGs: num(g.precioVentaGs),
+          })
+        }
+      }
+      if (conCantidad === 0) return setError(`${g.codigo}: indica la cantidad de al menos un tamaño, o quita el producto.`)
     }
+
     setGuardando(true)
     setError(null)
-    const datosLineas: DatosLinea[] = lineas.map((l) => ({
-      id: l.id,
-      productoId: l.productoId,
-      cantidad: num(l.cantidad),
-      precioCosto: num(l.precioCosto),
-      precioVentaUsd: num(l.precioVentaUsd),
-      precioVentaGs: num(l.precioVentaGs),
-    }))
     const { error: err, data } = await guardar(pedido?.id ?? null, {
       proveedorId,
       clienteId,
       fechaPedido: fecha,
       notas: notas.trim(),
-      lineas: datosLineas,
+      lineas,
     })
     setGuardando(false)
     if (err || !data) return setError(err ?? 'No se pudo guardar el pedido.')
@@ -164,8 +226,6 @@ export function PedidoFormModal({
     refetch()
     onGuardado(data.id)
   }
-
-  const celda = 'h-8 px-2 text-right text-xs'
 
   return (
     <Modal
@@ -175,6 +235,10 @@ export function PedidoFormModal({
       ancho="max-w-5xl"
       footer={
         <>
+          <span className="tabular mr-auto self-center text-xs text-muted-foreground">
+            {totales.unidades.toLocaleString('es-PY')} unidades · costo {formatUsd(totales.costo)} · venta{' '}
+            {formatUsd(totales.ventaUsd)} / {formatGs(totales.ventaGs)}
+          </span>
           <Button variant="outline" onClick={onCerrar} disabled={guardando}>
             Cancelar
           </Button>
@@ -245,7 +309,11 @@ export function PedidoFormModal({
                           <span className="font-medium text-foreground">{p.codigo}</span>{' '}
                           <span className="text-muted-foreground">{p.descripcion}</span>
                         </span>
-                        <Plus className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {p.colores.length > 0 && `${p.colores.length} col.`}
+                          {p.colores.length > 0 && p.tamanoIds.length > 0 && ' · '}
+                          {p.tamanoIds.length > 0 && `${p.tamanoIds.length} tam.`}
+                        </span>
                       </button>
                     </li>
                   ))
@@ -254,77 +322,163 @@ export function PedidoFormModal({
             )}
           </div>
 
-          {lineas.length === 0 ? (
+          {grupos.length === 0 ? (
             <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
-              Aún no hay productos. Búscalos arriba para agregarlos.
+              Aún no hay productos. Búscalos arriba: al agregar uno aparecen todos sus colores y tamaños para cargar las cantidades.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-md border border-border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">Producto</th>
-                    <th className="w-24 px-2 py-2 text-right font-medium">Cantidad</th>
-                    <th className="w-28 px-2 py-2 text-right font-medium">Costo USD</th>
-                    <th className="w-28 px-2 py-2 text-right font-medium">Venta USD</th>
-                    <th className="w-32 px-2 py-2 text-right font-medium">Venta Gs</th>
-                    <th className="w-10"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lineas.map((l) => (
-                    <tr key={l.clave} className="border-b border-border last:border-0">
-                      <td className="px-3 py-1.5">
-                        <p className="font-medium text-foreground">{l.codigo}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {l.descripcion}
-                          {l.detalle && ` · ${l.detalle}`}
-                        </p>
-                        {l.cargado > 0 && (
-                          <p className="text-xs text-warning">{l.cargado} ya cargados en contenedores</p>
-                        )}
-                      </td>
-                      {(['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs'] as const).map((campo) => (
-                        <td key={campo} className="px-2 py-1.5">
-                          <Input
-                            inputMode="decimal"
-                            aria-label={`${campo} de ${l.codigo}`}
-                            className={celda}
-                            value={l[campo]}
-                            onChange={(e) => cambiar(l.clave, campo, e.target.value)}
-                          />
-                        </td>
-                      ))}
-                      <td className="px-1 py-1.5">
+            <div className="space-y-4">
+              {grupos.map((g) => {
+                const sinVariantes = g.ejes.colores.length === 1 && !g.ejes.colores[0] && g.ejes.tamanos.length === 1 && !g.ejes.tamanos[0].id
+                const hayColores = !(g.ejes.colores.length === 1 && !g.ejes.colores[0])
+                const hayTamanos = !(g.ejes.tamanos.length === 1 && !g.ejes.tamanos[0].id)
+                const bloqueado = Object.values(g.cargados).some((n) => n > 0)
+                return (
+                  <section key={g.clave} className="overflow-hidden rounded-md border border-border">
+                    <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-secondary/50 px-3 py-2">
+                      <p className="text-sm">
+                        <span className="font-semibold text-foreground">{g.codigo}</span>{' '}
+                        <span className="text-muted-foreground">
+                          {g.descripcion}
+                          {g.detalle && ` · ${g.detalle}`}
+                        </span>
+                      </p>
+                      <span className="flex items-center gap-3">
+                        <span className="tabular text-xs text-muted-foreground">
+                          {totalGrilla(g.cantidades).toLocaleString('es-PY')} unid.
+                        </span>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="size-8"
-                          title={l.cargado > 0 ? 'Está cargado en un contenedor' : 'Quitar'}
-                          disabled={l.cargado > 0}
-                          onClick={() => setLineas((ls) => ls.filter((x) => x.clave !== l.clave))}
+                          className="size-7"
+                          title={bloqueado ? 'Tiene unidades cargadas en un contenedor' : 'Quitar producto'}
+                          aria-label={`Quitar ${g.codigo}`}
+                          disabled={bloqueado}
+                          onClick={() => setGrupos((gs) => gs.filter((x) => x.clave !== g.clave))}
                         >
                           <X />
                         </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-border bg-secondary/40 text-xs">
-                    <td className="px-3 py-2 font-medium text-foreground">{totales.unidades.toLocaleString('es-PY')} unidades</td>
-                    <td></td>
-                    <td className="tabular px-2 py-2 text-right font-medium text-foreground">{formatUsd(totales.costo)}</td>
-                    <td className="tabular px-2 py-2 text-right font-medium text-foreground">{formatUsd(totales.ventaUsd)}</td>
-                    <td className="tabular px-2 py-2 text-right font-medium text-foreground">{formatGs(totales.ventaGs)}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
+                      </span>
+                    </header>
+
+                    <div className="space-y-3 p-3">
+                      {sinVariantes ? (
+                        <label className="flex items-center gap-3 text-sm text-foreground">
+                          Cantidad
+                          <Input
+                            inputMode="decimal"
+                            aria-label={`Cantidad de ${g.codigo}`}
+                            className="h-8 w-28 text-right text-xs"
+                            value={g.cantidades[claveCelda('', '')] ?? ''}
+                            onChange={(e) => cambiarCelda(g, claveCelda('', ''), e.target.value)}
+                          />
+                        </label>
+                      ) : (
+                        <>
+                          {hayTamanos && (
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              Misma cantidad en todos los {hayColores ? 'colores y ' : ''}tamaños:
+                              <Input
+                                inputMode="decimal"
+                                aria-label={`Misma cantidad en todo ${g.codigo}`}
+                                className="h-8 w-20 text-right text-xs"
+                                placeholder="0"
+                                value={g.parejo}
+                                onChange={(e) => cambiar(g.clave, { parejo: e.target.value })}
+                              />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={!num(g.parejo)}
+                                onClick={() => cambiar(g.clave, { cantidades: llenarGrilla(g.ejes, g.parejo) })}
+                              >
+                                Aplicar a todos
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={bloqueado}
+                                onClick={() => cambiar(g.clave, { cantidades: {}, parejo: '' })}
+                              >
+                                Vaciar
+                              </Button>
+                            </div>
+                          )}
+                          <div className="overflow-x-auto">
+                            <table className="text-sm">
+                              <thead>
+                                <tr className="text-xs text-muted-foreground">
+                                  {hayColores && <th className="pr-3 text-left font-medium">Color</th>}
+                                  {g.ejes.tamanos.map((t) => (
+                                    <th key={t.id} className="px-1 pb-1 text-center font-medium">
+                                      {t.nombre || 'Cant.'}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {g.ejes.colores.map((color) => (
+                                  <tr key={color}>
+                                    {hayColores && <td className="whitespace-nowrap py-0.5 pr-3 text-foreground">{color}</td>}
+                                    {g.ejes.tamanos.map((t) => {
+                                      const k = claveCelda(color, t.id)
+                                      const cargado = g.cargados[k] ?? 0
+                                      return (
+                                        <td key={t.id} className="px-1 py-0.5">
+                                          <Input
+                                            inputMode="decimal"
+                                            aria-label={`Cantidad de ${[g.codigo, color, t.nombre].filter(Boolean).join(' ')}`}
+                                            title={cargado > 0 ? `${cargado} ya cargados en contenedores` : undefined}
+                                            className={`h-8 w-14 px-1 text-center text-xs ${cargado > 0 ? 'border-warning' : ''}`}
+                                            value={g.cantidades[k] ?? ''}
+                                            onChange={(e) => cambiarCelda(g, k, e.target.value)}
+                                          />
+                                        </td>
+                                      )
+                                    })}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      )}
+
+                      <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-3">
+                        <Field label="Costo USD (c/u)">
+                          <Input
+                            inputMode="decimal"
+                            className="h-8 text-xs"
+                            value={g.precioCosto}
+                            onChange={(e) => cambiar(g.clave, { precioCosto: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Venta USD (c/u)">
+                          <Input
+                            inputMode="decimal"
+                            className="h-8 text-xs"
+                            value={g.precioVentaUsd}
+                            onChange={(e) => cambiar(g.clave, { precioVentaUsd: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Venta Gs (c/u)">
+                          <Input
+                            inputMode="numeric"
+                            className="h-8 text-xs"
+                            value={g.precioVentaGs}
+                            onChange={(e) => cambiar(g.clave, { precioVentaGs: e.target.value })}
+                          />
+                        </Field>
+                      </div>
+                    </div>
+                  </section>
+                )
+              })}
             </div>
           )}
           <p className="mt-2 text-xs text-muted-foreground">
-            Los precios se copian del producto al agregarlo; si luego cambian en el catálogo, este pedido no se altera.
+            Los precios se copian del producto al agregarlo y valen para todos sus colores y tamaños; si luego cambian en el
+            catálogo, este pedido no se altera.
           </p>
         </div>
 

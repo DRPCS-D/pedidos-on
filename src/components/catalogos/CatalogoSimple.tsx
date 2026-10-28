@@ -21,6 +21,7 @@ export interface CampoCatalogo {
   max: number
   requerido?: boolean
   multilinea?: boolean
+  hint?: string
 }
 
 export interface ColumnaCatalogo {
@@ -281,7 +282,7 @@ function FormCatalogo({
     >
       <fieldset disabled={!puedeEditar} className="space-y-4">
         {campos.map((c, i) => (
-          <Field key={c.clave} label={c.requerido ? `${c.label} *` : c.label}>
+          <Field key={c.clave} label={c.requerido ? `${c.label} *` : c.label} hint={c.hint}>
             {c.multilinea ? (
               <Textarea
                 value={valores[c.clave] ?? ''}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { tamanoReducido } from './imagen'
 import {
+  agruparPorProducto,
   cargaDePedido,
   estadoHeredado,
   estadosManualesPermitidos,
@@ -96,5 +97,13 @@ describe('estadosManualesPermitidos', () => {
     expect(estadosManualesPermitidos('en_transito', true)).toEqual([])
     expect(estadosManualesPermitidos('desembarcado', true)).toEqual(['entregado'])
     expect(estadosManualesPermitidos('entregado', true)).toEqual([])
+  })
+})
+
+describe('agruparPorProducto', () => {
+  it('junta las variantes de cada producto sin cambiar el orden de los productos', () => {
+    const l = (productoId: string, n: number) => ({ productoId, n })
+    const r = agruparPorProducto([l('A', 1), l('B', 1), l('A', 2), l('B', 2), l('A', 3)])
+    expect(r.map((x) => `${x.productoId}${x.n}`)).toEqual(['A1', 'A2', 'A3', 'B1', 'B2'])
   })
 })

@@ -1,14 +1,14 @@
 import { useMemo } from 'react'
 import { ejecutar } from '@/lib/ejecutar'
 import { TABLAS } from '@/lib/tablas'
-import type { Cliente, ItemCatalogo, NombreCatalogo, Proveedor } from '@/lib/tipos'
+import type { Cliente, ItemCatalogo, NombreCatalogo, Proveedor, Tamano } from '@/lib/tipos'
 import { useTabla } from './useTabla'
 
 interface TiposCatalogo {
   proveedores: Proveedor
   clientes: Cliente
   marcas: ItemCatalogo
-  tamanos: ItemCatalogo
+  tamanos: Tamano
 }
 
 const ETIQUETA: Record<NombreCatalogo, string> = {

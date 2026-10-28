@@ -114,11 +114,17 @@ export interface Cliente {
   activo: boolean
 }
 
-/** Marcas y tamaños comparten forma. */
+/** Las marcas son solo nombre. */
 export interface ItemCatalogo {
   id: string
   nombre: string
   activo: boolean
+}
+
+/** Un tamaño pertenece a un grupo (Calzado, Ropa…) y se ordena por `orden` dentro de él. */
+export interface Tamano extends ItemCatalogo {
+  grupo: string
+  orden: number
 }
 
 export type NombreCatalogo = 'proveedores' | 'clientes' | 'marcas' | 'tamanos'
@@ -127,9 +133,7 @@ export interface Producto {
   id: string
   codigo: string
   descripcion: string
-  color: string
   marcaId: string
-  tamanoId: string
   /** Fábrica habitual (opcional). */
   proveedorId: string
   /** USD */
@@ -141,6 +145,10 @@ export interface Producto {
   activo: boolean
   /** Id de Drive de la foto principal, vacío si no tiene. */
   fotoId: string
+  /** Colores en que viene (vacío = sin variantes de color). */
+  colores: string[]
+  /** Ids de los tamaños en que viene, ordenados por grupo y orden (vacío = sin tamaños). */
+  tamanoIds: string[]
 }
 
 // ── Pedidos y contenedores ──
@@ -154,6 +162,7 @@ export interface LineaPedido {
   color: string
   marca: string
   tamano: string
+  tamanoId: string
   cantidad: number
   precioCosto: number
   precioVentaUsd: number

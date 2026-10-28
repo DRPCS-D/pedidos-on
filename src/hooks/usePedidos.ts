@@ -8,6 +8,9 @@ export interface DatosLinea {
   /** Vacío en una línea nueva. */
   id: string
   productoId: string
+  /** Color y tamaño de la línea (vacíos si el producto no los tiene). Una línea existente los conserva. */
+  color: string
+  tamanoId: string
   cantidad: number
   precioCosto: number
   precioVentaUsd: number

@@ -97,3 +97,13 @@ export function estadosManualesPermitidos(estado: EstadoPedido, conCargas: boole
 export function tieneCargas(p: Pick<Pedido, 'lineas'>): boolean {
   return p.lineas.some((l) => l.cargado > 0)
 }
+
+/**
+ * Líneas agrupadas por producto (en el orden en que aparece cada producto), para
+ * que las variantes de un mismo modelo queden juntas aunque una se haya agregado después.
+ */
+export function agruparPorProducto<T extends { productoId: string }>(lineas: T[]): T[] {
+  const grupos = new Map<string, T[]>()
+  for (const l of lineas) grupos.set(l.productoId, [...(grupos.get(l.productoId) ?? []), l])
+  return [...grupos.values()].flat()
+}

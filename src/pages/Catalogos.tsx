@@ -10,6 +10,17 @@ import { cn } from '@/lib/utils'
 const CAMPOS_NOMBRE: CampoCatalogo[] = [{ clave: 'nombre', label: 'Nombre', max: 60, requerido: true }]
 const COLUMNAS_NOMBRE: ColumnaCatalogo[] = [{ label: 'Nombre', render: (r) => r.nombre }]
 
+const CAMPOS_TAMANO: CampoCatalogo[] = [
+  { clave: 'nombre', label: 'Nombre', max: 60, requerido: true, hint: 'Ej. 38, 39 (calzado) o S, M, L (ropa).' },
+  { clave: 'grupo', label: 'Grupo', max: 40, hint: 'Agrupa los tamaños al elegirlos en un producto. Ej. Calzado, Ropa.' },
+  { clave: 'orden', label: 'Orden', max: 6, hint: 'Número para ordenar dentro del grupo (S=1, M=2, L=3…).' },
+]
+const COLUMNAS_TAMANO: ColumnaCatalogo[] = [
+  { label: 'Nombre', render: (r) => r.nombre },
+  { label: 'Grupo', render: (r) => r.grupo || '—' },
+  { label: 'Orden', render: (r) => String(r.orden ?? '') },
+]
+
 type Pestana = 'marcas' | 'tamanos'
 
 function TipoDeCambio() {
@@ -68,7 +79,7 @@ export default function Catalogos() {
     <div>
       <div className="mb-5">
         <h1 className="text-lg font-semibold text-foreground">Catálogos</h1>
-        <p className="text-sm text-muted-foreground">Marcas y tamaños de los productos, y el tipo de cambio.</p>
+        <p className="text-sm text-muted-foreground">Marcas, tamaños (tallas) de los productos y el tipo de cambio.</p>
       </div>
 
       <TipoDeCambio />
@@ -110,10 +121,10 @@ export default function Catalogos() {
           incrustado
           tabla="tamanos"
           titulo="Tamaños"
-          descripcion="Talle o medida de cada producto (S, M, L, 50x70 cm…)."
+          descripcion="Tallas y medidas en que vienen los productos (36, 37… para calzado; S, M, L para ropa)."
           singular="tamaño"
-          campos={CAMPOS_NOMBRE}
-          columnas={COLUMNAS_NOMBRE}
+          campos={CAMPOS_TAMANO}
+          columnas={COLUMNAS_TAMANO}
         />
       )}
     </div>

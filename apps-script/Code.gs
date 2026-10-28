@@ -2,7 +2,8 @@
  * Pedidos ON - Backend (Google Apps Script)
  *
  * Seguimiento de pedidos a fábricas de China: catálogos (proveedores,
- * clientes, marcas, tamaños, productos), pedidos con sus líneas, contenedores
+ * clientes, marcas, tamaños, productos con sus colores y tamaños), pedidos con
+ * una línea por producto, color y tamaño, contenedores
  * con lo que lleva cada uno, historial de estados con fecha y archivos
  * (fotos de productos, documentos de pedidos) en una carpeta de Google Drive.
  *
@@ -36,12 +37,14 @@ var ENCABEZADOS = {
   Proveedores: ['id', 'nombre', 'contacto', 'telefono', 'email', 'ciudad', 'notas', 'activo'],
   Clientes: ['id', 'nombre', 'ruc', 'telefono', 'email', 'direccion', 'notas', 'activo'],
   Marcas: ['id', 'nombre', 'activo'],
-  Tamanos: ['id', 'nombre', 'activo'],
-  Productos: ['id', 'codigo', 'descripcion', 'color', 'marcaId', 'tamanoId', 'proveedorId',
+  Tamanos: ['id', 'nombre', 'grupo', 'orden', 'activo'],
+  Productos: ['id', 'codigo', 'descripcion', 'marcaId', 'proveedorId',
               'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'activo'],
+  ProductoColores: ['id', 'productoId', 'color'],
+  ProductoTamanos: ['id', 'productoId', 'tamanoId'],
   Pedidos: ['id', 'folio', 'proveedorId', 'clienteId', 'estado', 'fechaPedido', 'notas',
             'creadoPor', 'fechaCreacion', 'fechaEstado'],
-  PedidoLineas: ['id', 'pedidoId', 'productoId', 'codigo', 'descripcion', 'color', 'marca', 'tamano',
+  PedidoLineas: ['id', 'pedidoId', 'productoId', 'codigo', 'descripcion', 'color', 'marca', 'tamano', 'tamanoId',
                  'cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs'],
   Contenedores: ['id', 'numero', 'tipo', 'naviera', 'bl', 'puertoOrigen', 'puertoDestino', 'etd', 'eta',
                  'estado', 'notas', 'creadoPor', 'fechaCreacion'],
@@ -52,7 +55,7 @@ var ENCABEZADOS = {
 };
 
 /** Columnas numéricas y de casilla: el resto se guarda como texto (formato @). */
-var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes'];
+var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes', 'orden'];
 var CASILLAS = ['activo', 'principal'];
 /** Columnas con fecha sin hora ('yyyy-MM-dd'); las demás fechas son ISO con hora. */
 var FECHAS_DIA = ['fechaPedido', 'fechaEstado', 'etd', 'eta'];
@@ -92,8 +95,8 @@ var CATALOGOS = {
   },
   tamanos: {
     hoja: 'Tamanos', etiqueta: 'tamaño',
-    campos: { nombre: 60 },
-    usadoEn: [{ hoja: 'Productos', col: 'tamanoId' }]
+    campos: { nombre: 60, grupo: 40, orden: 6 },
+    usadoEn: [{ hoja: 'ProductoTamanos', col: 'tamanoId' }]
   }
 };
 
@@ -353,7 +356,8 @@ function handleListCatalogo_(body) {
   requireAuth_(body);
   var c = catalogo_(body.tabla);
   var lista = leer_(c.hoja).filas.filter(function (r) { return r.id; }).map(limpiar_);
-  lista.sort(function (a, b) { return a.nombre.localeCompare(b.nombre); });
+  // Los tamaños van por grupo (Calzado, Ropa…) y su orden propio: 36, 37… o S, M, L.
+  lista.sort(c.hoja === 'Tamanos' ? compararTamanos_ : function (a, b) { return a.nombre.localeCompare(b.nombre); });
   return jsonOut_({ ok: true, registros: lista });
 }
 
@@ -370,7 +374,9 @@ function handleGuardarCatalogo_(body) {
   conLock_([body.tabla], function () {
     var t = leer_(c.hoja);
     var repetido = t.filas.filter(function (r) {
-      return r.id !== id && r.nombre.toUpperCase() === obj.nombre.toUpperCase();
+      if (r.id === id || r.nombre.toUpperCase() !== obj.nombre.toUpperCase()) return false;
+      // Un mismo nombre puede existir en grupos distintos (el 40 del calzado y el 40 de otra medida).
+      return c.hoja !== 'Tamanos' || r.grupo.toUpperCase() === obj.grupo.toUpperCase();
     })[0];
     if (repetido) throw new Error('Ya existe un ' + c.etiqueta + ' con ese nombre.');
     if (id) {
@@ -404,6 +410,31 @@ function handleBorrarCatalogo_(body) {
 }
 
 // ---------- Productos ----------
+// Un producto es un modelo con sus precios; los colores (ProductoColores) y los
+// tamaños (ProductoTamanos) que tiene dan las variantes que se piden en un pedido.
+
+function compararTamanos_(a, b) {
+  if (a.grupo !== b.grupo) return a.grupo.localeCompare(b.grupo);
+  if (a.orden !== b.orden) return a.orden - b.orden;
+  return a.nombre.localeCompare(b.nombre);
+}
+
+/** { idTamaño: posición } según grupo y orden, para ordenar los tamaños de un producto. */
+function posicionTamanos_() {
+  var pos = {};
+  leer_('Tamanos').filas.filter(function (t) { return t.id; }).sort(compararTamanos_)
+    .forEach(function (t, i) { pos[t.id] = i; });
+  return pos;
+}
+
+/** { productoId: [valores] } de una pestaña de variantes, en orden de alta. */
+function variantesPorProducto_(hoja, col) {
+  var m = {};
+  leer_(hoja).filas.forEach(function (r) {
+    if (r.productoId) (m[r.productoId] = m[r.productoId] || []).push(r[col]);
+  });
+  return m;
+}
 
 function handleListProductos_(body) {
   requireAuth_(body);
@@ -413,13 +444,65 @@ function handleListProductos_(body) {
     if (a.entidad !== 'producto' || a.mime.indexOf('image/') !== 0) return;
     if (!fotos[a.entidadId] || a.principal) fotos[a.entidadId] = a.driveId;
   });
+  var colores = variantesPorProducto_('ProductoColores', 'color');
+  var tamanos = variantesPorProducto_('ProductoTamanos', 'tamanoId');
+  var pos = posicionTamanos_();
   var lista = leer_('Productos').filas.filter(function (p) { return p.id; }).map(function (p) {
     var x = limpiar_(p);
     x.fotoId = fotos[p.id] || '';
+    x.colores = colores[p.id] || [];
+    x.tamanoIds = (tamanos[p.id] || []).slice().sort(function (a, b) { return (pos[a] || 0) - (pos[b] || 0); });
     return x;
   });
   lista.sort(function (a, b) { return a.codigo.localeCompare(b.codigo); });
   return jsonOut_({ ok: true, productos: lista });
+}
+
+/** Colores sin repetir (sin distinguir mayúsculas), recortados; como mucho 30. */
+function listaColores_(valor) {
+  var vistos = {};
+  var lista = [];
+  (Array.isArray(valor) ? valor : []).forEach(function (c) {
+    var t = texto_(c, 40);
+    if (t && !vistos[t.toUpperCase()]) { vistos[t.toUpperCase()] = true; lista.push(t); }
+  });
+  if (lista.length > 30) throw new Error('Un producto admite hasta 30 colores.');
+  return lista;
+}
+
+/** Ids de tamaño sin repetir, todos existentes. */
+function listaTamanos_(valor) {
+  var existentes = {};
+  leer_('Tamanos').filas.forEach(function (t) { existentes[t.id] = true; });
+  var vistos = {};
+  var lista = [];
+  (Array.isArray(valor) ? valor : []).forEach(function (id) {
+    var t = texto_(id, 40);
+    if (!t || vistos[t]) return;
+    if (!existentes[t]) throw new Error('Uno de los tamaños no existe.');
+    vistos[t] = true;
+    lista.push(t);
+  });
+  return lista;
+}
+
+/** Deja en `hoja` exactamente `valores` para el producto: borra los que sobran y agrega los nuevos. */
+function sincronizarVariantes_(hoja, col, productoId, valores) {
+  var sheet = hoja_(hoja);
+  var actuales = leer_(hoja).filas.filter(function (r) { return r.productoId === productoId; });
+  var clave = function (v) { return String(v).toUpperCase(); };
+  var quedan = {};
+  valores.forEach(function (v) { quedan[clave(v)] = true; });
+  var existen = {};
+  actuales.forEach(function (r) { existen[clave(r[col])] = true; });
+  actuales.sort(function (a, b) { return b._fila - a._fila; })
+    .forEach(function (r) { if (!quedan[clave(r[col])]) borrarFila_(sheet, r._fila); });
+  valores.forEach(function (v) {
+    if (existen[clave(v)]) return;
+    var fila = { id: nuevoId_(), productoId: productoId };
+    fila[col] = v;
+    agregar_(hoja, fila);
+  });
 }
 
 function handleGuardarProducto_(body) {
@@ -428,9 +511,7 @@ function handleGuardarProducto_(body) {
   var obj = {
     codigo: texto_(d.codigo, 40),
     descripcion: texto_(d.descripcion, 300),
-    color: texto_(d.color, 60),
     marcaId: texto_(d.marcaId, 40),
-    tamanoId: texto_(d.tamanoId, 40),
     proveedorId: texto_(d.proveedorId, 40),
     precioCosto: numero_(d.precioCosto, 'El precio de costo'),
     precioVentaUsd: numero_(d.precioVentaUsd, 'El precio de venta en USD'),
@@ -440,8 +521,9 @@ function handleGuardarProducto_(body) {
   if (!obj.codigo) throw new Error('El código es obligatorio.');
   if (!obj.descripcion) throw new Error('La descripción es obligatoria.');
   validarReferencia_('Marcas', obj.marcaId, 'La marca');
-  validarReferencia_('Tamanos', obj.tamanoId, 'El tamaño');
   validarReferencia_('Proveedores', obj.proveedorId, 'El proveedor');
+  var colores = listaColores_(d.colores);
+  var tamanoIds = listaTamanos_(d.tamanoIds);
   var id = String(body.id || '').trim();
 
   var final = conLock_(['productos'], function () {
@@ -450,16 +532,19 @@ function handleGuardarProducto_(body) {
       return p.id !== id && p.codigo.toUpperCase() === obj.codigo.toUpperCase();
     })[0];
     if (repetido) throw new Error('Ya existe un producto con el código ' + obj.codigo + '.');
+    var productoId = id;
     if (id) {
       var actual = buscar_(t, 'id', id);
       if (!actual) throw new Error('El producto ya no existe.');
       Object.keys(obj).forEach(function (k) { actual[k] = obj[k]; });
       escribir_('Productos', actual);
-      return id;
+    } else {
+      productoId = obj.id = nuevoId_();
+      agregar_('Productos', obj);
     }
-    obj.id = nuevoId_();
-    agregar_('Productos', obj);
-    return obj.id;
+    sincronizarVariantes_('ProductoColores', 'color', productoId, colores);
+    sincronizarVariantes_('ProductoTamanos', 'tamanoId', productoId, tamanoIds);
+    return productoId;
   });
   return jsonOut_({ ok: true, id: final });
 }
@@ -473,6 +558,8 @@ function handleBorrarProducto_(body) {
     if (buscar_(leer_('PedidoLineas'), 'productoId', id)) {
       throw new Error('El producto está en pedidos. Desactívalo en lugar de borrarlo.');
     }
+    borrarDonde_('ProductoColores', 'productoId', id);
+    borrarDonde_('ProductoTamanos', 'productoId', id);
     borrarArchivosDe_('producto', id);
     borrarFila_(hoja_('Productos'), p._fila);
   });
@@ -520,7 +607,7 @@ function handleGuardarPedido_(body) {
   validarReferencia_('Clientes', clienteId, 'El cliente');
   if (!fechaValida_(fechaPedido)) throw new Error('La fecha del pedido no es válida.');
   var lineasIn = Array.isArray(body.lineas) ? body.lineas : [];
-  if (!lineasIn.length) throw new Error('El pedido debe tener al menos un producto.');
+  if (!lineasIn.length) throw new Error('El pedido debe tener al menos un producto con cantidad.');
   var id = String(body.id || '').trim();
 
   var resultado = conLock_(['pedidos', 'historial'], function () {
@@ -559,13 +646,23 @@ function guardarLineas_(pedidoId, lineasIn) {
   var productos = leer_('Productos');
   var marcas = mapaNombresCatalogo_('Marcas');
   var tamanos = mapaNombresCatalogo_('Tamanos');
+  var coloresPor = variantesPorProducto_('ProductoColores', 'color');
+  var tamanosPor = variantesPorProducto_('ProductoTamanos', 'tamanoId');
   var cargado = cargadoPorLinea_();
   var existentes = tL.filas.filter(function (l) { return l.pedidoId === pedidoId; });
   var vistos = {};
+  var variantes = {}; // producto|color|tamaño: no puede repetirse dentro del pedido
+  var claveVariante = function (productoId, color, tamanoId) {
+    return productoId + '|' + String(color).toUpperCase() + '|' + tamanoId;
+  };
+  var registrar = function (codigo, clave) {
+    if (variantes[clave]) throw new Error(codigo + ': esa combinación de color y tamaño está repetida.');
+    variantes[clave] = true;
+  };
 
   lineasIn.forEach(function (li) {
     var cantidad = numero_(li.cantidad, 'La cantidad');
-    if (!(cantidad > 0)) throw new Error('Cada producto debe tener una cantidad mayor que cero.');
+    if (!(cantidad > 0)) throw new Error('Cada línea debe tener una cantidad mayor que cero.');
     var precios = {
       precioCosto: numero_(li.precioCosto, 'El precio de costo'),
       precioVentaUsd: numero_(li.precioVentaUsd, 'El precio de venta en USD'),
@@ -574,9 +671,11 @@ function guardarLineas_(pedidoId, lineasIn) {
     var lid = String(li.id || '').trim();
     var actual = lid ? existentes.filter(function (l) { return l.id === lid; })[0] : null;
     if (actual) {
+      // Una línea existente conserva su color y tamaño; solo cambian cantidad y precios.
       vistos[lid] = true;
+      registrar(actual.codigo, claveVariante(actual.productoId, actual.color, actual.tamanoId));
       if (cantidad < (cargado[lid] || 0)) {
-        throw new Error('El producto ' + actual.codigo + ' ya tiene ' + cargado[lid] + ' cargados en contenedores.');
+        throw new Error(actual.codigo + ' ' + actual.color + ' ' + actual.tamano + ': ya tiene ' + cargado[lid] + ' cargados en contenedores.');
       }
       actual.cantidad = cantidad;
       Object.keys(precios).forEach(function (k) { actual[k] = precios[k]; });
@@ -585,10 +684,27 @@ function guardarLineas_(pedidoId, lineasIn) {
     }
     var prod = buscar_(productos, 'id', String(li.productoId || ''));
     if (!prod) throw new Error('Uno de los productos ya no existe.');
+    var colores = coloresPor[prod.id] || [];
+    var tamanoIds = tamanosPor[prod.id] || [];
+    var color = texto_(li.color, 40);
+    var tamanoId = texto_(li.tamanoId, 40);
+    if (colores.length) {
+      var igual = colores.filter(function (c) { return c.toUpperCase() === color.toUpperCase(); })[0];
+      if (!igual) throw new Error(prod.codigo + ': elige un color válido.');
+      color = igual;
+    } else {
+      color = '';
+    }
+    if (tamanoIds.length) {
+      if (tamanoIds.indexOf(tamanoId) === -1) throw new Error(prod.codigo + ': elige un tamaño válido.');
+    } else {
+      tamanoId = '';
+    }
+    registrar(prod.codigo, claveVariante(prod.id, color, tamanoId));
     var nueva = {
       id: nuevoId_(), pedidoId: pedidoId, productoId: prod.id, codigo: prod.codigo,
-      descripcion: prod.descripcion, color: prod.color, marca: marcas[prod.marcaId] || '',
-      tamano: tamanos[prod.tamanoId] || '', cantidad: cantidad
+      descripcion: prod.descripcion, color: color, marca: marcas[prod.marcaId] || '',
+      tamano: tamanos[tamanoId] || '', tamanoId: tamanoId, cantidad: cantidad
     };
     Object.keys(precios).forEach(function (k) { nueva[k] = precios[k]; });
     agregar_('PedidoLineas', nueva);
@@ -599,7 +715,7 @@ function guardarLineas_(pedidoId, lineasIn) {
   existentes.filter(function (l) { return !vistos[l.id]; })
     .sort(function (a, b) { return b._fila - a._fila; })
     .forEach(function (l) {
-      if (cargado[l.id]) throw new Error('No se puede quitar ' + l.codigo + ': está cargado en un contenedor.');
+      if (cargado[l.id]) throw new Error('No se puede quitar ' + l.codigo + ' ' + l.color + ' ' + l.tamano + ': está cargado en un contenedor.');
       borrarFila_(sheet, l._fila);
     });
 }
@@ -1148,6 +1264,15 @@ function instalar() {
   aplicarValidaciones_(ss);
   var mensaje = creadas.length ? 'Pestañas creadas: ' + creadas.join(', ') + '. ' : 'Las pestañas ya existían. ';
 
+  if (leer_('Tamanos').filas.length === 0) {
+    // Tamaños habituales para empezar; se pueden editar, desactivar o agregar en Catálogos.
+    for (var n = 34; n <= 45; n++) agregar_('Tamanos', { id: nuevoId_(), nombre: String(n), grupo: 'Calzado', orden: n, activo: true });
+    ['XS', 'S', 'M', 'L', 'XL', 'XXL'].forEach(function (t, i) {
+      agregar_('Tamanos', { id: nuevoId_(), nombre: t, grupo: 'Ropa', orden: i + 1, activo: true });
+    });
+    agregar_('Tamanos', { id: nuevoId_(), nombre: 'Único', grupo: 'Otros', orden: 1, activo: true });
+    mensaje += 'Tamaños de ejemplo creados (calzado 34-45, ropa XS-XXL). ';
+  }
   var cfg = leerConfig_();
   if (!cfg.tipoCambio) {
     guardarConfig_('tipoCambio', '7500');

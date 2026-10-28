@@ -1,10 +1,10 @@
-import { Calculator, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Calculator, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Adjuntos } from '@/components/archivos/Adjuntos'
 import { Button } from '@/components/ui/button'
 import { ErrorBox } from '@/components/ui/estado'
-import { Field, Input, Select } from '@/components/ui/field'
+import { Field, Input, Label, Select } from '@/components/ui/field'
 import { Modal } from '@/components/ui/modal'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import { useConfig } from '@/hooks/useConfig'
@@ -15,10 +15,10 @@ import type { Producto } from '@/lib/tipos'
 interface Form {
   codigo: string
   descripcion: string
-  color: string
   marcaId: string
-  tamanoId: string
   proveedorId: string
+  colores: string[]
+  tamanoIds: string[]
   precioCosto: string
   precioVentaUsd: string
   precioVentaGs: string
@@ -28,10 +28,10 @@ interface Form {
 const VACIO: Form = {
   codigo: '',
   descripcion: '',
-  color: '',
   marcaId: '',
-  tamanoId: '',
   proveedorId: '',
+  colores: [],
+  tamanoIds: [],
   precioCosto: '',
   precioVentaUsd: '',
   precioVentaGs: '',
@@ -43,6 +43,15 @@ const num = (s: string) => Number(s.replace(',', '.')) || 0
 /** Opciones activas de un catálogo, más la ya elegida aunque esté inactiva (para no perderla al guardar). */
 function opciones<T extends { id: string; activo: boolean }>(lista: T[], elegido: string) {
   return lista.filter((x) => x.activo || x.id === elegido)
+}
+
+/** Agrega colores de un texto «Rojo, Azul» sin repetir (sin distinguir mayúsculas). */
+function sumarColores(actuales: string[], texto: string): string[] {
+  const out = [...actuales]
+  for (const c of texto.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean)) {
+    if (!out.some((o) => o.toUpperCase() === c.toUpperCase())) out.push(c)
+  }
+  return out
 }
 
 export function ProductoFormModal({
@@ -66,6 +75,7 @@ export function ProductoFormModal({
   const { guardar, refetch } = useProductos()
 
   const [f, setF] = useState<Form>(VACIO)
+  const [colorNuevo, setColorNuevo] = useState('')
   /** Al crear, el id se conoce recién tras guardar: desde ahí se pueden subir fotos. */
   const [idActual, setIdActual] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -79,10 +89,10 @@ export function ProductoFormModal({
         ? {
             codigo: producto.codigo,
             descripcion: producto.descripcion,
-            color: producto.color,
             marcaId: producto.marcaId,
-            tamanoId: producto.tamanoId,
             proveedorId: producto.proveedorId,
+            colores: producto.colores,
+            tamanoIds: producto.tamanoIds,
             precioCosto: producto.precioCosto ? String(producto.precioCosto) : '',
             precioVentaUsd: producto.precioVentaUsd ? String(producto.precioVentaUsd) : '',
             precioVentaGs: producto.precioVentaGs ? String(producto.precioVentaGs) : '',
@@ -90,6 +100,7 @@ export function ProductoFormModal({
           }
         : VACIO,
     )
+    setColorNuevo('')
     setError(null)
     // Solo al abrir o cambiar de producto: una sincronización de fondo no debe borrar lo que se escribe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -97,18 +108,45 @@ export function ProductoFormModal({
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((x) => ({ ...x, [k]: v }))
 
+  /** Tamaños elegibles agrupados (Calzado, Ropa…), respetando el orden del catálogo. */
+  const grupos = useMemo(() => {
+    const m = new Map<string, typeof tamanos>()
+    for (const t of tamanos) {
+      if (!t.activo && !f.tamanoIds.includes(t.id)) continue
+      const g = t.grupo || 'Sin grupo'
+      m.set(g, [...(m.get(g) ?? []), t])
+    }
+    return [...m.entries()]
+  }, [tamanos, f.tamanoIds])
+
+  function agregarColor() {
+    if (!colorNuevo.trim()) return
+    set('colores', sumarColores(f.colores, colorNuevo))
+    setColorNuevo('')
+  }
+
+  function alternarTamano(id: string, marcado: boolean) {
+    set('tamanoIds', marcado ? [...f.tamanoIds, id] : f.tamanoIds.filter((x) => x !== id))
+  }
+
+  function alternarGrupo(ids: string[], marcar: boolean) {
+    set('tamanoIds', marcar ? [...new Set([...f.tamanoIds, ...ids])] : f.tamanoIds.filter((x) => !ids.includes(x)))
+  }
+
   async function onGuardar() {
     if (!f.codigo.trim()) return setError('El código es obligatorio.')
     if (!f.descripcion.trim()) return setError('La descripción es obligatoria.')
+    // Un color escrito y sin confirmar con Enter también cuenta.
+    const colores = colorNuevo.trim() ? sumarColores(f.colores, colorNuevo) : f.colores
     setGuardando(true)
     setError(null)
     const datos: DatosProducto = {
       codigo: f.codigo.trim(),
       descripcion: f.descripcion.trim(),
-      color: f.color.trim(),
       marcaId: f.marcaId,
-      tamanoId: f.tamanoId,
       proveedorId: f.proveedorId,
+      colores,
+      tamanoIds: f.tamanoIds,
       precioCosto: num(f.precioCosto),
       precioVentaUsd: num(f.precioVentaUsd),
       precioVentaGs: num(f.precioVentaGs),
@@ -123,6 +161,8 @@ export function ProductoFormModal({
       onCerrar()
     } else {
       // Se queda abierto para poder agregar las fotos del producto recién creado.
+      setColorNuevo('')
+      set('colores', colores)
       setIdActual(data?.id ?? null)
       toast.success('Producto creado. Ya puedes agregar fotos.')
     }
@@ -158,7 +198,7 @@ export function ProductoFormModal({
     >
       <fieldset disabled={!puedeEditar} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Código *">
+          <Field label="Código (modelo) *">
             <Input value={f.codigo} maxLength={40} autoFocus={!producto} onChange={(e) => set('codigo', e.target.value)} />
           </Field>
           <Field label="Descripción *" className="sm:col-span-2">
@@ -167,25 +207,12 @@ export function ProductoFormModal({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Color">
-            <Input value={f.color} maxLength={60} onChange={(e) => set('color', e.target.value)} />
-          </Field>
           <Field label="Marca">
             <Select value={f.marcaId} onChange={(e) => set('marcaId', e.target.value)}>
               <option value="">Sin marca</option>
               {opciones(marcas, f.marcaId).map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.nombre}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Tamaño">
-            <Select value={f.tamanoId} onChange={(e) => set('tamanoId', e.target.value)}>
-              <option value="">Sin tamaño</option>
-              {opciones(tamanos, f.tamanoId).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nombre}
                 </option>
               ))}
             </Select>
@@ -200,6 +227,94 @@ export function ProductoFormModal({
               ))}
             </Select>
           </Field>
+        </div>
+
+        <div>
+          <Label>Colores</Label>
+          {f.colores.length > 0 && (
+            <ul className="mb-2 flex flex-wrap gap-1.5">
+              {f.colores.map((c) => (
+                <li key={c} className="flex items-center gap-1 rounded-full bg-secondary py-0.5 pl-2.5 pr-1 text-xs text-foreground">
+                  {c}
+                  <button
+                    type="button"
+                    aria-label={`Quitar ${c}`}
+                    className="rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    onClick={() => set('colores', f.colores.filter((x) => x !== c))}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Input
+            aria-label="Agregar color"
+            placeholder="Escribe un color y pulsa Enter (o varios separados por coma)"
+            value={colorNuevo}
+            maxLength={120}
+            onChange={(e) => setColorNuevo(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                agregarColor()
+              }
+            }}
+            onBlur={agregarColor}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">Sin colores = el producto no tiene variantes de color.</p>
+        </div>
+
+        <div>
+          <Label>Tamaños en que viene</Label>
+          {grupos.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Primero crea tamaños en Catálogos.</p>
+          ) : (
+            <div className="space-y-3 rounded-md border border-input p-3">
+              {grupos.map(([grupo, lista]) => {
+                const ids = lista.map((t) => t.id)
+                const todos = ids.every((id) => f.tamanoIds.includes(id))
+                return (
+                  <div key={grupo}>
+                    <div className="mb-1.5 flex items-center justify-between gap-3">
+                      <span className="text-xs font-medium text-foreground">{grupo}</span>
+                      <button
+                        type="button"
+                        className="text-xs text-primary hover:underline"
+                        onClick={() => alternarGrupo(ids, !todos)}
+                      >
+                        {todos ? 'Quitar todos' : 'Marcar todos'}
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {lista.map((t) => {
+                        const marcado = f.tamanoIds.includes(t.id)
+                        return (
+                          <label
+                            key={t.id}
+                            className={`flex cursor-pointer select-none items-center rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                              marcado
+                                ? 'border-primary bg-primary/10 font-medium text-primary'
+                                : 'border-input text-muted-foreground hover:bg-accent'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="sr-only"
+                              checked={marcado}
+                              onChange={(e) => alternarTamano(t.id, e.target.checked)}
+                            />
+                            {t.nombre}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <p className="mt-1 text-xs text-muted-foreground">Sin tamaños = el producto no tiene tallas (accesorios, por ejemplo).</p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
@@ -229,6 +344,7 @@ export function ProductoFormModal({
             </div>
           </Field>
         </div>
+        <p className="-mt-2 text-xs text-muted-foreground">Los precios valen para todos los colores y tamaños del producto.</p>
 
         {idActual && (
           <Field label="Estado">

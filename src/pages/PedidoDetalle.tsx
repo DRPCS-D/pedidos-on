@@ -17,6 +17,7 @@ import { useContenedores } from '@/hooks/useContenedores'
 import { usePedidos } from '@/hooks/usePedidos'
 import { formatCantidad, formatFecha, formatGs, formatUsd } from '@/lib/format'
 import {
+  agruparPorProducto,
   CARGA_LABEL,
   cargaDePedido,
   estadosManualesPermitidos,
@@ -163,7 +164,7 @@ export default function PedidoDetalle() {
               </tr>
             </thead>
             <tbody>
-              {pedido.lineas.map((l) => (
+              {agruparPorProducto(pedido.lineas).map((l) => (
                 <tr key={l.id} className="border-b border-border last:border-0">
                   <td className="whitespace-nowrap px-4 py-2.5 font-medium text-foreground">{l.codigo}</td>
                   <td className="px-4 py-2.5 text-foreground">{l.descripcion}</td>

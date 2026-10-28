@@ -7,10 +7,10 @@ import { useTabla } from './useTabla'
 export interface DatosProducto {
   codigo: string
   descripcion: string
-  color: string
   marcaId: string
-  tamanoId: string
   proveedorId: string
+  colores: string[]
+  tamanoIds: string[]
   precioCosto: number
   precioVentaUsd: number
   precioVentaGs: number
