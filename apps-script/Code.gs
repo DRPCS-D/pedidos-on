@@ -158,6 +158,7 @@ function doPost(e) {
       case 'getConfig':              return handleGetConfig_(body);
       case 'setConfig':              return handleSetConfig_(body);
       case 'listArchivos':           return handleListArchivos_(body);
+      case 'fotosDocumento':         return handleFotosDocumento_(body);
       case 'subirArchivo':           return handleSubirArchivo_(body);
       case 'marcarPrincipal':        return handleMarcarPrincipal_(body);
       case 'borrarArchivo':          return handleBorrarArchivo_(body);
@@ -1442,6 +1443,31 @@ function handleListArchivos_(body) {
     return String(a.fecha).localeCompare(String(b.fecha));
   });
   return jsonOut_({ ok: true, archivos: lista });
+}
+
+/**
+ * Miniaturas de fotos de producto (base64) para incluirlas en los PDF. Solo se sirven
+ * archivos que estén registrados como fotos de producto, hasta 60 por llamada.
+ */
+function handleFotosDocumento_(body) {
+  requireAuth_(body);
+  var ids = Array.isArray(body.driveIds) ? body.driveIds : [];
+  var permitidos = {};
+  leer_('Archivos').filas.forEach(function (a) {
+    if (a.entidad === 'producto' && a.mime.indexOf('image/') === 0) permitidos[a.driveId] = true;
+  });
+  var fotos = {};
+  ids.slice(0, 60).forEach(function (id) {
+    id = String(id);
+    if (!permitidos[id]) return;
+    try {
+      var miniatura = DriveApp.getFileById(id).getThumbnail();
+      if (miniatura) fotos[id] = { mime: miniatura.getContentType(), data: Utilities.base64Encode(miniatura.getBytes()) };
+    } catch (e) {
+      // Sin miniatura: el documento sale sin esa foto.
+    }
+  });
+  return jsonOut_({ ok: true, fotos: fotos });
 }
 
 function handleSubirArchivo_(body) {

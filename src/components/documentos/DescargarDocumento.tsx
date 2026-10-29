@@ -4,6 +4,9 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/field'
 import { Modal } from '@/components/ui/modal'
+import { useCatalogo } from '@/hooks/useCatalogo'
+import { useProductos } from '@/hooks/useProductos'
+import { ejecutarConDatos } from '@/lib/ejecutar'
 import type { EncabezadoDoc, LineaDoc, MonedaDoc } from '@/lib/documentos/filas'
 
 type Formato = 'pdf' | 'xlsx'
@@ -25,7 +28,30 @@ export function DescargarDocumento({
   const [precios, setPrecios] = useState(true)
   const [firma, setFirma] = useState(true)
   const [condiciones, setCondiciones] = useState(true)
+  const [fotos, setFotos] = useState(true)
   const [generando, setGenerando] = useState(false)
+  const { data: catalogoTamanos } = useCatalogo('tamanos')
+  const { porId: productos } = useProductos()
+
+  /** Fotos principales de los productos del pedido, como data URL (el PDF no puede leerlas de Drive directamente). */
+  async function cargarFotos(): Promise<Map<string, string>> {
+    const porDrive = new Map<string, string[]>()
+    for (const l of lineas) {
+      const id = productos.get(l.productoId)?.fotoId
+      if (id) porDrive.set(id, [...new Set([...(porDrive.get(id) ?? []), l.productoId])])
+    }
+    const resultado = new Map<string, string>()
+    if (porDrive.size === 0) return resultado
+    const { data } = await ejecutarConDatos<{ fotos: Record<string, { mime: string; data: string }> }>(
+      'fotosDocumento',
+      { driveIds: [...porDrive.keys()] },
+      'No se pudieron cargar las fotos.',
+    )
+    for (const [driveId, f] of Object.entries(data?.fotos ?? {})) {
+      for (const productoId of porDrive.get(driveId) ?? []) resultado.set(productoId, `data:${f.mime};base64,${f.data}`)
+    }
+    return resultado
+  }
 
   async function descargar() {
     setGenerando(true)
@@ -35,6 +61,12 @@ export function DescargarDocumento({
         moneda,
         firma: tipo === 'cliente' && firma,
         condiciones: tipo === 'cliente' && condiciones,
+        ordenTamanos: new Map(
+          [...catalogoTamanos]
+            .sort((a, b) => (a.grupo ?? '').localeCompare(b.grupo ?? '') || (a.orden ?? 0) - (b.orden ?? 0))
+            .map((t, i) => [t.id, i] as const),
+        ),
+        fotos: formato === 'pdf' && fotos ? await cargarFotos() : undefined,
       }
       if (formato === 'pdf') await (await import('@/lib/documentos/pdf')).descargarPdf(encabezado, lineas, opc)
       else await (await import('@/lib/documentos/excel')).descargarExcel(encabezado, lineas, opc)
@@ -89,6 +121,13 @@ export function DescargarDocumento({
             <input type="checkbox" className="size-4 accent-primary" checked={precios} onChange={(e) => setPrecios(e.target.checked)} />
             {tipo === 'fabrica' ? 'Incluir costos (USD)' : 'Incluir precios'}
           </label>
+
+          {formato === 'pdf' && (
+            <label className="flex cursor-pointer items-center gap-2 text-foreground">
+              <input type="checkbox" className="size-4 accent-primary" checked={fotos} onChange={(e) => setFotos(e.target.checked)} />
+              Incluir la foto de cada producto
+            </label>
+          )}
 
           {tipo === 'cliente' && precios && (
             <div>

@@ -7,6 +7,7 @@ export interface LineaDoc {
   marca: string
   color: string
   tamano: string
+  tamanoId: string
   cantidad: number
   porCaja: number
   cajas: number
@@ -15,13 +16,19 @@ export interface LineaDoc {
   precioVentaGs: number
 }
 
+export interface ColumnaTamano {
+  id: string
+  nombre: string
+}
+
 export interface FilaDoc {
+  productoId: string
   codigo: string
   descripcion: string
   marca: string
   color: string
-  /** «36:2  37:2  38:4…» o vacío si no tiene tamaños. */
-  tamanos: string
+  /** Cantidad de cada tamaño (por id de tamaño). */
+  tallas: Record<string, number>
   /** Cajas del color si todas sus líneas comparten las mismas cajas; si no, 0. */
   cajas: number
   cantidad: number
@@ -38,15 +45,15 @@ export function filasDoc(lineas: LineaDoc[]): FilaDoc[] {
   }
   return [...grupos.values()].map((ls) => {
     const cajas = ls[0].cajas > 0 && ls.every((l) => l.cajas === ls[0].cajas && l.porCaja > 0) ? ls[0].cajas : 0
+    const tallas: Record<string, number> = {}
+    for (const l of ls) if (l.tamanoId) tallas[l.tamanoId] = (tallas[l.tamanoId] ?? 0) + l.cantidad
     return {
+      productoId: ls[0].productoId,
       codigo: ls[0].codigo,
       descripcion: ls[0].descripcion,
       marca: ls[0].marca,
       color: ls[0].color,
-      tamanos: ls
-        .filter((l) => l.tamano)
-        .map((l) => `${l.tamano}:${l.cantidad}`)
-        .join('  '),
+      tallas,
       cajas,
       cantidad: ls.reduce((s, l) => s + l.cantidad, 0),
       precioCosto: ls[0].precioCosto ?? 0,
@@ -54,6 +61,17 @@ export function filasDoc(lineas: LineaDoc[]): FilaDoc[] {
       precioVentaGs: ls[0].precioVentaGs,
     }
   })
+}
+
+/**
+ * Tamaños que aparecen en el documento, para usarlos como columnas. `orden` da la posición de cada
+ * tamaño en el catálogo (grupo y orden); los que no estén ahí quedan al final, en el orden en que aparecen.
+ */
+export function columnasTamano(lineas: LineaDoc[], orden: Map<string, number> = new Map()): ColumnaTamano[] {
+  const vistos = new Map<string, ColumnaTamano>()
+  for (const l of lineas) if (l.tamanoId && !vistos.has(l.tamanoId)) vistos.set(l.tamanoId, { id: l.tamanoId, nombre: l.tamano })
+  const pos = (c: ColumnaTamano) => orden.get(c.id) ?? Number.MAX_SAFE_INTEGER
+  return [...vistos.values()].sort((a, b) => pos(a) - pos(b))
 }
 
 export type MonedaDoc = 'usd' | 'gs' | 'ambas'
@@ -79,6 +97,10 @@ export interface OpcionesDoc {
   moneda: MonedaDoc
   firma: boolean
   condiciones: boolean
+  /** Orden de cada tamaño en el catálogo (por id), para ordenar las columnas. */
+  ordenTamanos?: Map<string, number>
+  /** Fotos de producto por id de producto (data URL), si se pidió incluirlas. */
+  fotos?: Map<string, string>
 }
 
 export const nombreArchivo = (folio: string, ext: 'pdf' | 'xlsx') => `${folio}.${ext}`
