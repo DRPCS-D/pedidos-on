@@ -13,8 +13,8 @@ const CONFIG = {
   velocidad: 0.04, // radianes por segundo
 }
 
-const COLOR_CLARO = '#d3dcee'
-const COLOR_OSCURO = '#2c3a63'
+const COLOR_CLARO = '#f1e8b8'
+const COLOR_OSCURO = '#3b3719'
 
 function repartir(n: number): V3[] {
   const pts: V3[] = []
