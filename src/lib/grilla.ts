@@ -57,3 +57,30 @@ export function llenarGrilla(ejes: EjesGrilla, valor: string): Record<string, st
 export function totalGrilla(cantidades: Record<string, string>): number {
   return Object.values(cantidades).reduce((s, v) => s + (Number(String(v).replace(',', '.')) || 0), 0)
 }
+
+const aNumero = (v: string | undefined) => Number(String(v ?? '').replace(',', '.')) || 0
+
+/** Unidades de una caja de la curva (suma de lo que lleva por tamaño). */
+export function unidadesPorCaja(curva: Record<string, string>): number {
+  return Object.values(curva).reduce((s, v) => s + aNumero(v), 0)
+}
+
+/**
+ * Cantidades de una fila de la grilla a partir de la curva y las cajas:
+ * cada tamaño = unidades por caja × cajas. Ej. 36/1 37/1 38/2 39/2 40/1 × 5 cajas = 5 5 10 10 5 (35).
+ * Sin cajas (vacío o 0) devuelve null: la fila no se toca.
+ */
+export function cantidadesDeCurva(
+  tamanos: TamanoRef[],
+  curva: Record<string, string>,
+  cajas: string,
+): Record<string, string> | null {
+  const n = aNumero(cajas)
+  if (!(n > 0)) return null
+  const out: Record<string, string> = {}
+  for (const t of tamanos) {
+    const u = aNumero(curva[t.id]) * n
+    out[t.id] = u > 0 ? String(Math.round(u * 1000) / 1000) : ''
+  }
+  return out
+}
