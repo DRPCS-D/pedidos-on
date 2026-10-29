@@ -12,7 +12,9 @@ import { ErrorBox, Vacio } from '@/components/ui/estado'
 import { ConfirmModal } from '@/components/ui/modal'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
+import { DescargarDocumento } from '@/components/documentos/DescargarDocumento'
 import { useCatalogo } from '@/hooks/useCatalogo'
+import { useConfig } from '@/hooks/useConfig'
 import { useContenedores } from '@/hooks/useContenedores'
 import { usePedidos } from '@/hooks/usePedidos'
 import { usePedidosCliente } from '@/hooks/usePedidosCliente'
@@ -42,7 +44,8 @@ export default function PedidoDetalle() {
   const navigate = useNavigate()
   const { esAdmin, puedeEditar } = useAuth()
   const { porId, loading, error, refetch, cambiarEstado, borrar, deshacerEstado } = usePedidos()
-  const { nombres: nombreProveedor } = useCatalogo('proveedores')
+  const { data: proveedores, nombres: nombreProveedor } = useCatalogo('proveedores')
+  const { empresa } = useConfig()
   const { nombres: nombreCliente } = useCatalogo('clientes')
   const { data: pedidosCliente } = usePedidosCliente()
   const { data: contenedores } = useContenedores()
@@ -125,6 +128,23 @@ export default function PedidoDetalle() {
             <p className="mt-1 text-sm text-muted-foreground">
               Creado por {pedido.creadoNombre || pedido.creadoPor} · en este estado desde {formatFecha(pedido.fechaEstado)}
             </p>
+            <DescargarDocumento
+              tipo="fabrica"
+              lineas={pedido.lineas}
+              encabezado={{
+                titulo: 'PEDIDO A FÁBRICA',
+                folio: pedido.folio,
+                fecha: pedido.fechaPedido,
+                contraparteTitulo: 'Fábrica',
+                contraparte: (() => {
+                  const f = proveedores.find((x) => x.id === pedido.proveedorId)
+                  return f ? [f.nombre, f.contacto, f.ciudad, [f.telefono, f.email].filter(Boolean).join(' · ')] : []
+                })(),
+                notas: pedido.notas,
+                empresa,
+                condiciones: '',
+              }}
+            />
           </div>
           {puedeEditar && (
             <div className="flex flex-wrap gap-2">

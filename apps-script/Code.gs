@@ -1379,7 +1379,7 @@ function handleDeshacerEstado_(body) {
 
 // ---------- Configuración ----------
 
-var CONFIG_EDITABLE = ['tipoCambio'];
+var CONFIG_EDITABLE = ['tipoCambio', 'empresa', 'condiciones'];
 
 function leerConfig_() {
   var cfg = {};
@@ -1401,16 +1401,24 @@ function guardarConfig_(clave, valor) {
 function handleGetConfig_(body) {
   requireAuth_(body);
   var cfg = leerConfig_();
-  return jsonOut_({ ok: true, config: [{ tipoCambio: Number(cfg.tipoCambio) || 0 }] });
+  return jsonOut_({ ok: true, config: [{ tipoCambio: Number(cfg.tipoCambio) || 0, empresa: String(cfg.empresa || ''), condiciones: String(cfg.condiciones || '') }] });
 }
 
 function handleSetConfig_(body) {
   requireAdmin_(body);
   var clave = String(body.clave || '');
   if (CONFIG_EDITABLE.indexOf(clave) === -1) throw new Error('Configuración no editable.');
-  var valor = numero_(body.valor, 'El tipo de cambio');
-  if (!(valor > 0)) throw new Error('El tipo de cambio debe ser mayor que cero.');
-  conLock_(['config'], function () { guardarConfig_(clave, String(valor)); });
+  conLock_(['config'], function () {
+    if (clave === 'tipoCambio') {
+      var valor = numero_(body.valor, 'El tipo de cambio');
+      if (!(valor > 0)) throw new Error('El tipo de cambio debe ser mayor que cero.');
+      guardarConfig_(clave, String(valor));
+    } else {
+      var texto = String(body.valor == null ? '' : body.valor).trim();
+      if (texto.length > 2000) throw new Error('El texto es demasiado largo (máximo 2000 caracteres).');
+      guardarConfig_(clave, texto);
+    }
+  });
   return jsonOut_({ ok: true });
 }
 

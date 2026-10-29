@@ -13,7 +13,9 @@ import { ErrorBox, Vacio } from '@/components/ui/estado'
 import { ConfirmModal } from '@/components/ui/modal'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
+import { DescargarDocumento } from '@/components/documentos/DescargarDocumento'
 import { useCatalogo } from '@/hooks/useCatalogo'
+import { useConfig } from '@/hooks/useConfig'
 import { usePedidos } from '@/hooks/usePedidos'
 import { usePedidosCliente } from '@/hooks/usePedidosCliente'
 import { formatCantidad, formatFecha, formatGs, formatUsd } from '@/lib/format'
@@ -36,7 +38,8 @@ export default function PedidoClienteDetalle() {
   const { esAdmin, puedeEditar } = useAuth()
   const { porId, loading, error, refetch, asignarAutomatico, cambiarEstado, borrar, deshacerEstado } = usePedidosCliente()
   const { porId: pedidos, refetch: refetchPedidos } = usePedidos()
-  const { nombres: nombreCliente } = useCatalogo('clientes')
+  const { data: clientes, nombres: nombreCliente } = useCatalogo('clientes')
+  const { empresa, condiciones } = useConfig()
 
   const pc = porId.get(id)
   const [editando, setEditando] = useState(false)
@@ -112,6 +115,23 @@ export default function PedidoClienteDetalle() {
             <p className="mt-1 text-sm text-muted-foreground">
               Creado por {pc.creadoNombre || pc.creadoPor} · en este estado desde {formatFecha(pc.fechaEstado)}
             </p>
+            <DescargarDocumento
+              tipo="cliente"
+              lineas={pc.lineas}
+              encabezado={{
+                titulo: 'PEDIDO DE CLIENTE',
+                folio: pc.folio,
+                fecha: pc.fecha,
+                contraparteTitulo: 'Cliente',
+                contraparte: (() => {
+                  const c = clientes.find((x) => x.id === pc.clienteId)
+                  return c ? [c.nombre, c.ruc && `RUC / C.I.: ${c.ruc}`, c.direccion, [c.telefono, c.email].filter(Boolean).join(' · ')] : []
+                })(),
+                notas: pc.notas,
+                empresa,
+                condiciones,
+              }}
+            />
           </div>
           {puedeEditar && (
             <div className="flex flex-wrap gap-2">

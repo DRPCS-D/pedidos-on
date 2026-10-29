@@ -293,6 +293,10 @@ export interface Archivo {
 
 export interface Config {
   tipoCambio: number
+  /** Datos de la empresa para los documentos (varias líneas). */
+  empresa: string
+  /** Condiciones del pedido de cliente (varias líneas). */
+  condiciones: string
 }
 
 export interface UsuarioApp {

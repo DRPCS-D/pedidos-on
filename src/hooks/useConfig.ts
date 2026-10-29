@@ -3,7 +3,7 @@ import { TABLAS } from '@/lib/tablas'
 import type { Config } from '@/lib/tipos'
 import { useTabla } from './useTabla'
 
-/** Configuración global (hoy solo el tipo de cambio Gs/USD). */
+/** Configuración global: tipo de cambio Gs/USD y textos de los documentos. */
 export function useConfig() {
   const lista = useTabla<Config>(TABLAS.config)
   const tipoCambio = lista.data[0]?.tipoCambio ?? 0
@@ -11,5 +11,11 @@ export function useConfig() {
   const guardarTipoCambio = (valor: number) =>
     ejecutar('setConfig', { clave: 'tipoCambio', valor }, 'No se pudo guardar el tipo de cambio.')
 
-  return { ...lista, tipoCambio, guardarTipoCambio }
+  const empresa = lista.data[0]?.empresa ?? ''
+  const condiciones = lista.data[0]?.condiciones ?? ''
+
+  const guardarTexto = (clave: 'empresa' | 'condiciones', valor: string) =>
+    ejecutar('setConfig', { clave, valor }, 'No se pudo guardar.')
+
+  return { ...lista, tipoCambio, empresa, condiciones, guardarTipoCambio, guardarTexto }
 }
