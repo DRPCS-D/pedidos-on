@@ -14,7 +14,6 @@ import {
   claveCelda,
   claveDeLinea,
   ejesGrilla,
-  llenarGrilla,
   totalGrilla,
   unidadesPorCaja,
   type EjesGrilla,
@@ -43,11 +42,9 @@ interface GrupoForm {
   precioCosto: string
   precioVentaUsd: string
   precioVentaGs: string
-  /** Texto del campo «misma cantidad en todos». */
-  parejo: string
-  /** Curva: unidades por caja de cada tamaño (id de tamaño → texto). */
-  curva: Record<string, string>
-  /** Cajas de cada color (color → texto). Con cajas, cada celda de la fila = curva × cajas. */
+  /** Curva de cada color: unidades por caja de cada tamaño (color → id de tamaño → texto). */
+  curva: Record<string, Record<string, string>>
+  /** Cajas de cada color. La cantidad de cada tamaño es curva × cajas. */
   cajas: Record<string, string>
 }
 
@@ -106,7 +103,6 @@ export function PedidoFormModal({
         precioCosto: texto(lineas[0].precioCosto),
         precioVentaUsd: texto(lineas[0].precioVentaUsd),
         precioVentaGs: texto(lineas[0].precioVentaGs),
-        parejo: '',
         curva: {},
         cajas: {},
       }
@@ -115,6 +111,10 @@ export function PedidoFormModal({
         g.cantidades[k] = String(l.cantidad)
         g.ids[k] = l.id
         g.cargados[k] = l.cargado
+        // Lo guardado son cantidades por tamaño: se muestran como la curva de 1 caja.
+        const color = k.split('|')[0]
+        g.curva[color] = { ...g.curva[color], [l.tamanoId]: String(l.cantidad) }
+        g.cajas[color] = '1'
       }
       return g
     })
@@ -166,7 +166,6 @@ export function PedidoFormModal({
         precioCosto: texto(p.precioCosto),
         precioVentaUsd: texto(p.precioVentaUsd),
         precioVentaGs: texto(p.precioVentaGs),
-        parejo: '',
         curva: {},
         cajas: {},
       },
@@ -177,25 +176,26 @@ export function PedidoFormModal({
   const cambiar = (clave: string, parche: Partial<GrupoForm>) =>
     setGrupos((gs) => gs.map((g) => (g.clave === clave ? { ...g, ...parche } : g)))
 
-  /** Recalcula las celdas de las filas con cajas: cada tamaño = unidades de la curva × cajas. */
-  function conCurva(g: GrupoForm, curva: Record<string, string>, cajas: Record<string, string>, colores: string[]): GrupoForm {
+  /** Cantidad de cada tamaño de un color = unidades de su curva × sus cajas (vacío si no hay cajas). */
+  function conCurva(g: GrupoForm, curva: GrupoForm['curva'], cajas: GrupoForm['cajas'], color: string): GrupoForm {
+    const fila = cantidadesDeCurva(g.ejes.tamanos, curva[color] ?? {}, cajas[color] ?? '')
     const cantidades = { ...g.cantidades }
-    for (const color of colores) {
-      const fila = cantidadesDeCurva(g.ejes.tamanos, curva, cajas[color] ?? '')
-      if (!fila) continue
-      for (const t of g.ejes.tamanos) cantidades[claveCelda(color, t.id)] = fila[t.id]
-    }
+    for (const t of g.ejes.tamanos) cantidades[claveCelda(color, t.id)] = fila?.[t.id] ?? ''
     return { ...g, curva, cajas, cantidades }
   }
 
-  const cambiarCurva = (g: GrupoForm, tamanoId: string, valor: string) =>
+  const cambiarCurva = (g: GrupoForm, color: string, tamanoId: string, valor: string) =>
     setGrupos((gs) =>
-      gs.map((x) => (x.clave === g.clave ? conCurva(x, { ...x.curva, [tamanoId]: valor }, x.cajas, x.ejes.colores) : x)),
+      gs.map((x) =>
+        x.clave === g.clave
+          ? conCurva(x, { ...x.curva, [color]: { ...x.curva[color], [tamanoId]: valor } }, x.cajas, color)
+          : x,
+      ),
     )
 
   const cambiarCajas = (g: GrupoForm, color: string, valor: string) =>
     setGrupos((gs) =>
-      gs.map((x) => (x.clave === g.clave ? conCurva(x, x.curva, { ...x.cajas, [color]: valor }, [color]) : x)),
+      gs.map((x) => (x.clave === g.clave ? conCurva(x, x.curva, { ...x.cajas, [color]: valor }, color) : x)),
     )
 
   const cambiarCelda = (g: GrupoForm, k: string, valor: string) =>
@@ -362,7 +362,6 @@ export function PedidoFormModal({
               {grupos.map((g) => {
                 const sinVariantes = g.ejes.colores.length === 1 && !g.ejes.colores[0] && g.ejes.tamanos.length === 1 && !g.ejes.tamanos[0].id
                 const hayColores = !(g.ejes.colores.length === 1 && !g.ejes.colores[0])
-                const hayTamanos = !(g.ejes.tamanos.length === 1 && !g.ejes.tamanos[0].id)
                 const bloqueado = Object.values(g.cargados).some((n) => n > 0)
                 return (
                   <section key={g.clave} className="overflow-hidden rounded-md border border-border">
@@ -406,35 +405,6 @@ export function PedidoFormModal({
                         </label>
                       ) : (
                         <>
-                          {hayTamanos && (
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              Misma cantidad en todos los {hayColores ? 'colores y ' : ''}tamaños:
-                              <Input
-                                inputMode="decimal"
-                                aria-label={`Misma cantidad en todo ${g.codigo}`}
-                                className="h-8 w-20 text-right text-xs"
-                                placeholder="0"
-                                value={g.parejo}
-                                onChange={(e) => cambiar(g.clave, { parejo: e.target.value })}
-                              />
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={!num(g.parejo)}
-                                onClick={() => cambiar(g.clave, { cantidades: llenarGrilla(g.ejes, g.parejo) })}
-                              >
-                                Aplicar a todos
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                disabled={bloqueado}
-                                onClick={() => cambiar(g.clave, { cantidades: {}, parejo: '', curva: {}, cajas: {} })}
-                              >
-                                Vaciar
-                              </Button>
-                            </div>
-                          )}
                           <div className="overflow-x-auto">
                             <table className="text-sm">
                               <thead>
@@ -442,88 +412,63 @@ export function PedidoFormModal({
                                   <th className="pr-3 text-left font-medium">{hayColores ? 'Color' : ''}</th>
                                   {g.ejes.tamanos.map((t) => (
                                     <th key={t.id} className="px-1 pb-1 text-center font-medium">
-                                      {t.nombre || 'Cant.'}
+                                      {t.nombre}
                                     </th>
                                   ))}
+                                  <th className="px-2 pb-1 text-right font-medium">Por caja</th>
+                                  <th className="px-1 pb-1 text-center font-medium">Cajas</th>
                                   <th className="px-2 pb-1 text-right font-medium">Total</th>
-                                  {hayTamanos && <th className="px-1 pb-1 text-center font-medium">Cajas</th>}
                                 </tr>
                               </thead>
                               <tbody>
-                                {hayTamanos && (
-                                  <tr className="bg-secondary/50">
-                                    <td className="whitespace-nowrap py-1 pl-2 pr-3 text-xs font-medium text-foreground">
-                                      Curva por caja
-                                    </td>
-                                    {g.ejes.tamanos.map((t) => (
-                                      <td key={t.id} className="px-1 py-1">
-                                        <Input
-                                          inputMode="decimal"
-                                          aria-label={`Curva de ${g.codigo}, unidades por caja del ${t.nombre}`}
-                                          className="h-8 w-14 px-1 text-center text-xs"
-                                          placeholder="0"
-                                          value={g.curva[t.id] ?? ''}
-                                          onChange={(e) => cambiarCurva(g, t.id, e.target.value)}
-                                        />
-                                      </td>
-                                    ))}
-                                    <td className="tabular px-2 text-right text-xs font-medium text-foreground">
-                                      {unidadesPorCaja(g.curva).toLocaleString('es-PY')}/caja
-                                    </td>
-                                    <td></td>
-                                  </tr>
-                                )}
                                 {g.ejes.colores.map((color) => {
+                                  const porCaja = unidadesPorCaja(g.curva[color] ?? {})
                                   const totalFila = totalGrilla(
                                     Object.fromEntries(g.ejes.tamanos.map((t) => [t.id, g.cantidades[claveCelda(color, t.id)] ?? ''])),
                                   )
+                                  const cargadoFila = g.ejes.tamanos.reduce((n, t) => n + (g.cargados[claveCelda(color, t.id)] ?? 0), 0)
                                   return (
                                     <tr key={color}>
-                                      <td className="whitespace-nowrap py-0.5 pl-2 pr-3 text-foreground">{color}</td>
-                                      {g.ejes.tamanos.map((t) => {
-                                        const k = claveCelda(color, t.id)
-                                        const cargado = g.cargados[k] ?? 0
-                                        return (
-                                          <td key={t.id} className="px-1 py-0.5">
-                                            <Input
-                                              inputMode="decimal"
-                                              aria-label={`Cantidad de ${[g.codigo, color, t.nombre].filter(Boolean).join(' ')}`}
-                                              title={cargado > 0 ? `${cargado} ya cargados en contenedores` : undefined}
-                                              className={`h-8 w-14 px-1 text-center text-xs ${cargado > 0 ? 'border-warning' : ''}`}
-                                              value={g.cantidades[k] ?? ''}
-                                              onChange={(e) => cambiarCelda(g, k, e.target.value)}
-                                            />
-                                          </td>
-                                        )
-                                      })}
-                                      <td className="tabular px-2 text-right text-xs text-foreground">
-                                        {totalFila.toLocaleString('es-PY')}
-                                      </td>
-                                      {hayTamanos && (
-                                        <td className="px-1 py-0.5">
+                                      <td className="whitespace-nowrap py-0.5 pr-3 text-foreground">{color}</td>
+                                      {g.ejes.tamanos.map((t) => (
+                                        <td key={t.id} className="px-1 py-0.5">
                                           <Input
                                             inputMode="decimal"
-                                            aria-label={`Cajas de ${[g.codigo, color].filter(Boolean).join(' ')}`}
-                                            title="Cajas de la curva: completa las cantidades de esta fila"
-                                            className="h-8 w-16 px-1 text-center text-xs"
+                                            aria-label={`Curva de ${[g.codigo, color].filter(Boolean).join(' ')}, unidades por caja del ${t.nombre}`}
+                                            className="h-8 w-14 px-1 text-center text-xs"
                                             placeholder="0"
-                                            value={g.cajas[color] ?? ''}
-                                            onChange={(e) => cambiarCajas(g, color, e.target.value)}
+                                            value={g.curva[color]?.[t.id] ?? ''}
+                                            onChange={(e) => cambiarCurva(g, color, t.id, e.target.value)}
                                           />
                                         </td>
-                                      )}
+                                      ))}
+                                      <td className="tabular px-2 text-right text-xs text-muted-foreground">
+                                        {porCaja.toLocaleString('es-PY')}
+                                      </td>
+                                      <td className="px-1 py-0.5">
+                                        <Input
+                                          inputMode="decimal"
+                                          aria-label={`Cajas de ${[g.codigo, color].filter(Boolean).join(' ')}`}
+                                          title={cargadoFila > 0 ? `${cargadoFila} unidades ya cargadas en contenedores` : undefined}
+                                          className={`h-8 w-16 px-1 text-center text-xs ${cargadoFila > 0 ? 'border-warning' : ''}`}
+                                          placeholder="0"
+                                          value={g.cajas[color] ?? ''}
+                                          onChange={(e) => cambiarCajas(g, color, e.target.value)}
+                                        />
+                                      </td>
+                                      <td className="tabular px-2 text-right text-xs font-medium text-foreground">
+                                        {totalFila.toLocaleString('es-PY')}
+                                      </td>
                                     </tr>
                                   )
                                 })}
                               </tbody>
                             </table>
                           </div>
-                          {hayTamanos && (
-                            <p className="text-xs text-muted-foreground">
-                              Curva: lo que lleva una caja de cada tamaño. Al indicar las cajas de un color, sus cantidades se calculan
-                              (ej. 7 por caja × 5 cajas = 35); después puedes ajustar cualquier celda a mano.
-                            </p>
-                          )}
+                          <p className="text-xs text-muted-foreground">
+                            Escribe la curva de cada color (unidades de cada tamaño en una caja) y sus cajas. Total = unidades por caja ×
+                            cajas (ej. 7 × 5 = 35).
+                          </p>
                         </>
                       )}
 
