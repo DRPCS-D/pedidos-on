@@ -6,7 +6,9 @@ const ent = (n: number) => n.toLocaleString('es-PY', { maximumFractionDigits: 0 
 const usd = (n: number) => n.toLocaleString('es-PY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 /** Anchos de columna (mm). */
-const ANCHO = { foto: 14, codigo: 17, color: 20, talla: 9, cajas: 13, cant: 12, precioUsd: 19, subUsd: 22, precioGs: 22, subGs: 26, descripcionMin: 30 }
+const ANCHO = { foto: 22, codigo: 17, color: 20, cajas: 13, cant: 12, precioUsd: 19, subUsd: 22, precioGs: 22, subGs: 26 }
+/** Foto del producto: lado máximo (mm) y alto que ocupa la fila. */
+const FOTO = { lado: 18, alto: 18 }
 /** Caja de un tamaño en la fila de tamaños (cuando no entran como columnas). */
 const CAJA = { ancho: 11, alto: 9 }
 
@@ -48,7 +50,7 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
   const fotos = opc.fotos && [...opc.fotos.keys()].some((id) => filas.some((f) => f.productoId === id)) ? opc.fotos : null
   const verUsd = opc.precios !== 'ninguno' && (opc.precios === 'costo' || opc.moneda !== 'gs')
   const verGs = opc.precios === 'venta' && opc.moneda !== 'usd'
-  const horizontal = verUsd && verGs || tamanos.length > 12
+  const horizontal = verUsd && verGs
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: horizontal ? 'landscape' : 'portrait' })
   const W = doc.internal.pageSize.getWidth()
   const H = doc.internal.pageSize.getHeight()
@@ -114,44 +116,37 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
     { titulo: 'Cant.', ancho: ANCHO.cant, der: true, valor: (f) => ent(f.cantidad), pie: ent(filas.reduce((s, f) => s + f.cantidad, 0)) },
     ...precios,
   ]
-  const columnasTalla: Columna[] = tamanos.map((t) => ({
-    titulo: t.nombre,
-    ancho: ANCHO.talla,
-    der: false,
-    valor: (f) => (f.tallas[t.id] ? ent(f.tallas[t.id]) : ''),
-    pie: ent(filas.reduce((s, f) => s + (f.tallas[t.id] ?? 0), 0)),
-  }))
   const sumaAnchos = (cs: Columna[]) => cs.reduce((s, c) => s + (c.ancho ?? 0), 0)
   const disponible = W - 2 * M
-  const enColumnas = tamanos.length === 0 || sumaAnchos(inicio) + sumaAnchos(fin) + tamanos.length * ANCHO.talla + ANCHO.descripcionMin <= disponible
-  const columnas = enColumnas ? [...inicio, ...columnasTalla, ...fin] : [...inicio, ...fin]
+  const columnas = [...inicio, ...fin]
   // La descripción se queda con lo que sobra.
   const anchoDescripcion = disponible - sumaAnchos(columnas)
   const columnaDesc = columnas.findIndex((c) => c.ancho === null)
 
-  // Cuerpo: una fila por color o, si los tamaños van debajo, dos (datos y tamaños).
+  // Cuerpo: una fila con los datos del color y, debajo, otra con sus tamaños (la foto ocupa las dos).
   const hayFotos = fotos !== null
-  // Con los tamaños en la fila de abajo, la foto ocupa las dos filas y no hace falta alargar la primera.
-  const alturaFila = hayFotos && enColumnas ? 11 : 0
   const tallasDeFila = new Map<number, { nombre: string; cantidad: number }[]>()
   const filaDeIndice = new Map<number, FilaDoc>()
   const cuerpo: RowInput[] = []
-  const celdasUltimaFila = columnas.length - (hayFotos ? 1 : 0)
+  const celdasTamanos = columnas.length - (hayFotos ? 1 : 0)
+  const anchoTamanos = columnas.slice(hayFotos ? 1 : 0).reduce((s, c) => s + (c.ancho ?? anchoDescripcion), 0)
+  const porLinea = Math.max(1, Math.floor((anchoTamanos - 2) / CAJA.ancho))
   for (const f of filas) {
+    const presentes = tamanos.filter((t) => f.tallas[t.id]).map((t) => ({ nombre: t.nombre, cantidad: f.tallas[t.id] }))
+    const conTamanos = presentes.length > 0
     const datos: CellDef[] = columnas.map((c, i) => ({
       content: c.valor(f),
-      styles: { halign: c.der ? 'right' : 'left', minCellHeight: alturaFila },
-      ...(hayFotos && i === 0 && !enColumnas ? { rowSpan: 2 } : {}),
+      styles: { halign: c.der ? 'right' : 'left', minCellHeight: hayFotos && !conTamanos ? FOTO.alto + 1.5 : 0 },
+      ...(hayFotos && i === 0 && conTamanos ? { rowSpan: 2 } : {}),
     }))
     filaDeIndice.set(cuerpo.length, f)
     cuerpo.push(datos)
-    if (!enColumnas && tamanos.length > 0) {
-      const presentes = tamanos.filter((t) => f.tallas[t.id]).map((t) => ({ nombre: t.nombre, cantidad: f.tallas[t.id] }))
-      const anchoCelda = columnas.slice(hayFotos ? 1 : 0).reduce((s, c) => s + (c.ancho ?? anchoDescripcion), 0)
-      const porLinea = Math.max(1, Math.floor((anchoCelda - 2) / CAJA.ancho))
-      const lineasCajas = Math.max(1, Math.ceil(presentes.length / porLinea))
+    if (conTamanos) {
+      const lineasCajas = Math.ceil(presentes.length / porLinea)
+      // Con foto, entre las dos filas tienen que sumar lo que ocupa la foto.
+      const minimo = Math.max(lineasCajas * CAJA.alto + 0.5, hayFotos ? FOTO.alto + 1.5 - 7 : 0)
       tallasDeFila.set(cuerpo.length, presentes)
-      cuerpo.push([{ content: '', colSpan: celdasUltimaFila, styles: { minCellHeight: lineasCajas * CAJA.alto + 0.5 } }])
+      cuerpo.push([{ content: '', colSpan: celdasTamanos, styles: { minCellHeight: minimo } }])
     }
   }
   const pie: CellDef[] = columnas.map((c, i) => ({
@@ -161,7 +156,7 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
 
   autoTable(doc, {
     startY: y,
-    head: [columnas.map((c) => ({ content: c.titulo, styles: { halign: c.der ? 'right' : enColumnas && c.ancho === ANCHO.talla ? 'center' : 'left' } }))],
+    head: [columnas.map((c) => ({ content: c.titulo, styles: { halign: c.der ? 'right' : 'left' } }))],
     body: cuerpo,
     foot: [pie],
     showFoot: 'lastPage',
@@ -170,7 +165,7 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
     headStyles: { fillColor: [20, 20, 20], textColor: [245, 208, 0], fontStyle: 'bold' },
     footStyles: { fillColor: [245, 245, 245], textColor: 0, fontStyle: 'bold' },
     columnStyles: Object.fromEntries(
-      columnas.map((c, i) => [i, { cellWidth: i === columnaDesc ? anchoDescripcion : (c.ancho ?? 20), halign: c.ancho === ANCHO.talla ? 'center' : c.der ? 'right' : 'left' }]),
+      columnas.map((c, i) => [i, { cellWidth: i === columnaDesc ? anchoDescripcion : (c.ancho ?? 20), halign: c.der ? 'right' : 'left' }]),
     ),
     didDrawCell: (d) => {
       if (d.section !== 'body') return
@@ -181,7 +176,7 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
         if (url) {
           try {
             const p = doc.getImageProperties(url)
-            const caja = Math.min(12, d.cell.height - 1.5)
+            const caja = Math.min(FOTO.lado, d.cell.width - 3, d.cell.height - 1.5)
             const escala = Math.min(caja / p.width, caja / p.height)
             const w = p.width * escala
             const h = p.height * escala
