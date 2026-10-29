@@ -1683,18 +1683,20 @@ function leer_(nombre) {
   var filas = [];
   for (var i = 1; i < rows.length; i++) {
     var o = { _fila: i + 1 };
-    for (var j = 0; j < cols.length; j++) o[cols[j]] = valorCelda_(cols[j], rows[i][j]);
+    for (var j = 0; j < cols.length; j++) o[cols[j]] = valorCelda_(cols[j], rows[i][j], nombre);
     filas.push(o);
   }
   return { sheet: sheet, filas: filas };
 }
 
-function valorCelda_(col, v) {
+function valorCelda_(col, v, hoja) {
   if (CASILLAS.indexOf(col) !== -1) return esActivo_(v);
   if (NUMERICAS.indexOf(col) !== -1) return Number(v) || 0;
   if (v instanceof Date) {
     // Si Sheets convirtió una celda en fecha: las de solo día vuelven a 'yyyy-MM-dd', el resto a ISO.
-    return FECHAS_DIA.indexOf(col) !== -1 ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd') : v.toISOString();
+    // 'fecha' es un día en Historial y PedidosCliente, pero un instante en Archivos.
+    var esDia = FECHAS_DIA.indexOf(col) !== -1 || (col === 'fecha' && hoja !== 'Archivos');
+    return esDia ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd') : v.toISOString();
   }
   return String(v == null ? '' : v).trim();
 }
