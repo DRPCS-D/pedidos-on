@@ -109,3 +109,40 @@ export function agruparPorProducto<T extends { productoId: string }>(lineas: T[]
   for (const l of lineas) grupos.set(l.productoId, [...(grupos.get(l.productoId) ?? []), l])
   return [...grupos.values()].flat()
 }
+
+export interface GrupoColor<T> {
+  clave: string
+  /** Líneas (una por tamaño) de un mismo producto y color. */
+  lineas: T[]
+  cantidad: number
+  /** Cajas y unidades por caja del color, o 0 si sus líneas no comparten las mismas cajas. */
+  cajas: number
+  porCaja: number
+  /** «36:5  37:5…», para mostrar el detalle por tamaño. */
+  tamanos: string
+}
+
+/** Junta las líneas de cada producto y color (una fila por color, con los tamaños sumados). */
+export function agruparPorColor<
+  T extends { productoId: string; color: string; tamano: string; cantidad: number; porCaja: number; cajas: number },
+>(lineas: T[]): GrupoColor<T>[] {
+  const grupos = new Map<string, T[]>()
+  for (const l of agruparPorProducto(lineas)) {
+    const k = `${l.productoId}|${l.color}`
+    grupos.set(k, [...(grupos.get(k) ?? []), l])
+  }
+  return [...grupos.entries()].map(([clave, ls]) => {
+    const comunes = ls[0].cajas > 0 && ls.every((l) => l.cajas === ls[0].cajas && l.porCaja > 0)
+    return {
+      clave,
+      lineas: ls,
+      cantidad: ls.reduce((s, l) => s + l.cantidad, 0),
+      cajas: comunes ? ls[0].cajas : 0,
+      porCaja: comunes ? ls.reduce((s, l) => s + l.porCaja, 0) : 0,
+      tamanos: ls
+        .filter((l) => l.tamano)
+        .map((l) => `${l.tamano}:${l.cantidad}`)
+        .join('  '),
+    }
+  })
+}

@@ -20,7 +20,7 @@ import { usePedidos } from '@/hooks/usePedidos'
 import { usePedidosCliente } from '@/hooks/usePedidosCliente'
 import { formatCantidad, formatFecha, formatGs, formatUsd } from '@/lib/format'
 import {
-  agruparPorProducto,
+  agruparPorColor,
   CARGA_LABEL,
   cargaDePedido,
   estadosManualesPermitidos,
@@ -191,7 +191,6 @@ export default function PedidoDetalle() {
                 <th className="px-4 py-2.5 font-medium">Descripción</th>
                 <th className="px-4 py-2.5 font-medium">Color</th>
                 <th className="px-4 py-2.5 font-medium">Marca</th>
-                <th className="px-4 py-2.5 font-medium">Tamaño</th>
                 <th className="px-4 py-2.5 text-right font-medium">Por caja</th>
                 <th className="px-4 py-2.5 text-right font-medium">Cajas</th>
                 <th className="px-4 py-2.5 text-right font-medium">Cant.</th>
@@ -202,30 +201,33 @@ export default function PedidoDetalle() {
               </tr>
             </thead>
             <tbody>
-              {agruparPorProducto(pedido.lineas).map((l) => (
-                <tr key={l.id} className="border-b border-border last:border-0">
+              {agruparPorColor(pedido.lineas).map((g) => {
+                const l = g.lineas[0]
+                const cargado = g.lineas.reduce((s, x) => s + x.cargado, 0)
+                return (
+                <tr key={g.clave} title={g.tamanos || undefined} className="border-b border-border last:border-0">
                   <td className="whitespace-nowrap px-4 py-2.5 font-medium text-foreground">{l.codigo}</td>
                   <td className="px-4 py-2.5 text-foreground">{l.descripcion}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{l.color || '—'}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{l.marca || '—'}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{l.tamano || '—'}</td>
-                  <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{l.cajas > 0 ? formatCantidad(l.porCaja) : '—'}</td>
-                  <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{l.cajas > 0 ? formatCantidad(l.cajas) : '—'}</td>
-                  <td className="tabular px-4 py-2.5 text-right text-foreground">{formatCantidad(l.cantidad)}</td>
+                  <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{g.cajas > 0 ? formatCantidad(g.porCaja) : '—'}</td>
+                  <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{g.cajas > 0 ? formatCantidad(g.cajas) : '—'}</td>
+                  <td className="tabular px-4 py-2.5 text-right text-foreground">{formatCantidad(g.cantidad)}</td>
                   <td
-                    className={`tabular px-4 py-2.5 text-right ${l.cargado >= l.cantidad ? 'text-success' : l.cargado > 0 ? 'text-warning' : 'text-muted-foreground'}`}
+                    className={`tabular px-4 py-2.5 text-right ${cargado >= g.cantidad ? 'text-success' : cargado > 0 ? 'text-warning' : 'text-muted-foreground'}`}
                   >
-                    {formatCantidad(l.cargado)}
+                    {formatCantidad(cargado)}
                   </td>
                   <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-muted-foreground">{formatUsd(l.precioCosto)}</td>
                   <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-foreground">{formatUsd(l.precioVentaUsd)}</td>
                   <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-foreground">{formatGs(l.precioVentaGs)}</td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
             <tfoot>
               <tr className="border-t border-border bg-secondary/40 text-xs font-medium text-foreground">
-                <td className="px-4 py-2.5" colSpan={5}>
+                <td className="px-4 py-2.5" colSpan={4}>
                   Total
                 </td>
                 <td></td>

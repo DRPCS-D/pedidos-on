@@ -21,7 +21,29 @@ import {
   ESTADOS_CONTENEDOR,
   TIPO_CONTENEDOR_LABEL,
   type EstadoContenedor,
+  type Pedido,
 } from '@/lib/tipos'
+
+/** Junta las cargas de un pedido por producto y color (una fila por color, con los tamaños sumados). */
+function porColor(pedido: Pedido | undefined, cargas: { lineaId: string; cantidad: number }[]) {
+  const grupos = new Map<string, { clave: string; codigo: string; texto: string; cargado: number; total: number; detalle: string[] }>()
+  for (const { lineaId, cantidad } of cargas) {
+    const l = pedido?.lineas.find((x) => x.id === lineaId)
+    const clave = l ? `${l.productoId}|${l.color}` : lineaId
+    const g = grupos.get(clave) ?? {
+      clave,
+      codigo: l?.codigo ?? '—',
+      texto: l ? [l.descripcion, l.color].filter(Boolean).join(' · ') : '',
+      cargado: 0,
+      total: l && pedido ? pedido.lineas.filter((x) => x.productoId === l.productoId && x.color === l.color).reduce((t, x) => t + x.cantidad, 0) : 0,
+      detalle: [],
+    }
+    g.cargado += cantidad
+    if (l?.tamano) g.detalle.push(`${l.tamano}:${cantidad}`)
+    grupos.set(clave, g)
+  }
+  return [...grupos.values()].map((g) => ({ ...g, detalle: g.detalle.join('  ') }))
+}
 
 function Dato({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -188,21 +210,16 @@ export default function ContenedorDetalle() {
                   </div>
                   <table className="w-full text-sm">
                     <tbody>
-                      {lineas.map(({ lineaId, cantidad }) => {
-                        const l = p?.lineas.find((x) => x.id === lineaId)
-                        return (
-                          <tr key={lineaId} className="border-t border-border first:border-0">
-                            <td className="whitespace-nowrap px-5 py-2 font-medium text-foreground">{l?.codigo ?? '—'}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{l ? [l.descripcion, l.color, l.tamano].filter(Boolean).join(' · ') : ''}</td>
-                            <td className="tabular px-5 py-2 text-right text-foreground">
-                              {formatCantidad(cantidad)}
-                              {l && cantidad < l.cantidad && (
-                                <span className="text-xs text-muted-foreground"> de {formatCantidad(l.cantidad)}</span>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })}
+                      {porColor(p, lineas).map((g) => (
+                        <tr key={g.clave} title={g.detalle || undefined} className="border-t border-border first:border-0">
+                          <td className="whitespace-nowrap px-5 py-2 font-medium text-foreground">{g.codigo}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{g.texto}</td>
+                          <td className="tabular px-5 py-2 text-right text-foreground">
+                            {formatCantidad(g.cargado)}
+                            {g.cargado < g.total && <span className="text-xs text-muted-foreground"> de {formatCantidad(g.total)}</span>}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>

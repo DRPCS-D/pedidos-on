@@ -19,7 +19,7 @@ import { useConfig } from '@/hooks/useConfig'
 import { usePedidos } from '@/hooks/usePedidos'
 import { usePedidosCliente } from '@/hooks/usePedidosCliente'
 import { formatCantidad, formatFecha, formatGs, formatUsd } from '@/lib/format'
-import { agruparPorProducto, totalesLineas } from '@/lib/pedidos'
+import { agruparPorColor, totalesLineas } from '@/lib/pedidos'
 import { COBERTURA_LABEL, situacionDe } from '@/lib/pedidoCliente'
 import { ESTADO_PC_LABEL, type EstadoPedidoCliente } from '@/lib/tipos'
 
@@ -179,7 +179,6 @@ export default function PedidoClienteDetalle() {
                 <th className="px-4 py-2.5 font-medium">Código</th>
                 <th className="px-4 py-2.5 font-medium">Descripción</th>
                 <th className="px-4 py-2.5 font-medium">Color</th>
-                <th className="px-4 py-2.5 font-medium">Tamaño</th>
                 <th className="px-4 py-2.5 text-right font-medium">Por caja</th>
                 <th className="px-4 py-2.5 text-right font-medium">Cajas</th>
                 <th className="px-4 py-2.5 text-right font-medium">Cant.</th>
@@ -190,33 +189,38 @@ export default function PedidoClienteDetalle() {
               </tr>
             </thead>
             <tbody>
-              {agruparPorProducto(pc.lineas).map((l) => (
-                <tr key={l.id} className="border-b border-border last:border-0">
+              {agruparPorColor(pc.lineas).map((g) => {
+                const l = g.lineas[0]
+                const asignado = g.lineas.reduce((s, x) => s + x.asignado, 0)
+                // De dónde viene: suma por pedido a fábrica, sin repetirlo por cada tamaño.
+                const origen = new Map<string, number>()
+                for (const x of g.lineas) for (const a of x.asignaciones) origen.set(a.pedidoId, (origen.get(a.pedidoId) ?? 0) + a.cantidad)
+                return (
+                <tr key={g.clave} title={g.tamanos || undefined} className="border-b border-border last:border-0">
                   <td className="whitespace-nowrap px-4 py-2.5 font-medium text-foreground">{l.codigo}</td>
                   <td className="px-4 py-2.5 text-foreground">{l.descripcion}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{l.color || '—'}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{l.tamano || '—'}</td>
-                  <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{l.cajas > 0 ? formatCantidad(l.porCaja) : '—'}</td>
-                  <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{l.cajas > 0 ? formatCantidad(l.cajas) : '—'}</td>
-                  <td className="tabular px-4 py-2.5 text-right text-foreground">{formatCantidad(l.cantidad)}</td>
+                  <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{g.cajas > 0 ? formatCantidad(g.porCaja) : '—'}</td>
+                  <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{g.cajas > 0 ? formatCantidad(g.cajas) : '—'}</td>
+                  <td className="tabular px-4 py-2.5 text-right text-foreground">{formatCantidad(g.cantidad)}</td>
                   <td
-                    className={`tabular px-4 py-2.5 text-right ${l.asignado >= l.cantidad ? 'text-success' : l.asignado > 0 ? 'text-warning' : 'text-muted-foreground'}`}
+                    className={`tabular px-4 py-2.5 text-right ${asignado >= g.cantidad ? 'text-success' : asignado > 0 ? 'text-warning' : 'text-muted-foreground'}`}
                   >
-                    {formatCantidad(l.asignado)}
+                    {formatCantidad(asignado)}
                   </td>
                   <td className="px-4 py-2.5">
-                    {l.asignaciones.length === 0 ? (
+                    {origen.size === 0 ? (
                       <span className="text-xs text-muted-foreground">Sin pedir</span>
                     ) : (
                       <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        {l.asignaciones.map((a) => {
-                          const p = pedidos.get(a.pedidoId)
+                        {[...origen.entries()].map(([pedidoId, cantidad]) => {
+                          const p = pedidos.get(pedidoId)
                           return (
-                            <span key={a.lineaId} className="flex items-center gap-1.5 text-xs">
-                              <Link to={`/pedidos/${a.pedidoId}`} className="font-medium text-foreground hover:underline">
+                            <span key={pedidoId} className="flex items-center gap-1.5 text-xs">
+                              <Link to={`/pedidos/${pedidoId}`} className="font-medium text-foreground hover:underline">
                                 {p?.folio ?? '—'}
                               </Link>
-                              <span className="tabular text-muted-foreground">×{formatCantidad(a.cantidad)}</span>
+                              <span className="tabular text-muted-foreground">×{formatCantidad(cantidad)}</span>
                               {p && <BadgeEstadoPedido estado={p.estado} />}
                             </span>
                           )
@@ -227,11 +231,12 @@ export default function PedidoClienteDetalle() {
                   <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-foreground">{formatUsd(l.precioVentaUsd)}</td>
                   <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-foreground">{formatGs(l.precioVentaGs)}</td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
             <tfoot>
               <tr className="border-t border-border bg-secondary/40 text-xs font-medium text-foreground">
-                <td className="px-4 py-2.5" colSpan={6}>
+                <td className="px-4 py-2.5" colSpan={5}>
                   Total
                 </td>
                 <td className="tabular px-4 py-2.5 text-right">{formatCantidad(t.unidades)}</td>

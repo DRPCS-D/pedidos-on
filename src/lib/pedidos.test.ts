@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { tamanoReducido } from './imagen'
 import {
+  agruparPorColor,
   agruparPorProducto,
   cargaDePedido,
   estadoHeredado,
@@ -105,5 +106,26 @@ describe('agruparPorProducto', () => {
     const l = (productoId: string, n: number) => ({ productoId, n })
     const r = agruparPorProducto([l('A', 1), l('B', 1), l('A', 2), l('B', 2), l('A', 3)])
     expect(r.map((x) => `${x.productoId}${x.n}`)).toEqual(['A1', 'A2', 'A3', 'B1', 'B2'])
+  })
+})
+
+describe('agruparPorColor', () => {
+  const l = (color: string, tamano: string, cantidad: number, cajas = 5) => ({
+    productoId: 'p1',
+    color,
+    tamano,
+    cantidad,
+    porCaja: 2,
+    cajas,
+  })
+
+  it('junta los tamaños de cada color y suma cajas comunes', () => {
+    const g = agruparPorColor([l('AZUL', '36', 10), l('ROJO', '36', 4), l('AZUL', '37', 10)])
+    expect(g).toHaveLength(2)
+    expect(g[0]).toMatchObject({ cantidad: 20, cajas: 5, porCaja: 4, tamanos: '36:10  37:10' })
+  })
+
+  it('sin cajas comunes no muestra cajas', () => {
+    expect(agruparPorColor([l('AZUL', '36', 10, 5), l('AZUL', '37', 6, 3)])[0].cajas).toBe(0)
   })
 })
