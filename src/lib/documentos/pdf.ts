@@ -131,7 +131,8 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
 
   // Cuerpo: una fila por color o, si los tamaños van debajo, dos (datos y tamaños).
   const hayFotos = fotos !== null
-  const alturaFila = hayFotos ? 14 : 0
+  // Con los tamaños en la fila de abajo, la foto ocupa las dos filas y no hace falta alargar la primera.
+  const alturaFila = hayFotos && enColumnas ? 11 : 0
   const tallasDeFila = new Map<number, { nombre: string; cantidad: number }[]>()
   const filaDeIndice = new Map<number, FilaDoc>()
   const cuerpo: RowInput[] = []
@@ -150,7 +151,7 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
       const porLinea = Math.max(1, Math.floor((anchoCelda - 2) / CAJA.ancho))
       const lineasCajas = Math.max(1, Math.ceil(presentes.length / porLinea))
       tallasDeFila.set(cuerpo.length, presentes)
-      cuerpo.push([{ content: '', colSpan: celdasUltimaFila, styles: { minCellHeight: lineasCajas * CAJA.alto + 2 } }])
+      cuerpo.push([{ content: '', colSpan: celdasUltimaFila, styles: { minCellHeight: lineasCajas * CAJA.alto + 0.5 } }])
     }
   }
   const pie: CellDef[] = columnas.map((c, i) => ({
@@ -165,7 +166,7 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
     foot: [pie],
     showFoot: 'lastPage',
     margin: { left: M, right: M, bottom: reservaFirma + piePagina + 4 },
-    styles: { fontSize: 8.5, cellPadding: 1.8, lineColor: [220, 220, 220], lineWidth: 0.1, valign: 'middle' },
+    styles: { fontSize: 8.5, cellPadding: 1.4, lineColor: [220, 220, 220], lineWidth: 0.1, valign: 'middle' },
     headStyles: { fillColor: [20, 20, 20], textColor: [245, 208, 0], fontStyle: 'bold' },
     footStyles: { fillColor: [245, 245, 245], textColor: 0, fontStyle: 'bold' },
     columnStyles: Object.fromEntries(
@@ -180,7 +181,7 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
         if (url) {
           try {
             const p = doc.getImageProperties(url)
-            const caja = Math.min(12, d.cell.height - 2)
+            const caja = Math.min(12, d.cell.height - 1.5)
             const escala = Math.min(caja / p.width, caja / p.height)
             const w = p.width * escala
             const h = p.height * escala
@@ -197,7 +198,7 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
       const porLinea = Math.max(1, Math.floor((d.cell.width - 2) / CAJA.ancho))
       presentes.forEach((t, k) => {
         const x = d.cell.x + 1 + (k % porLinea) * CAJA.ancho
-        const yy = d.cell.y + 1 + Math.floor(k / porLinea) * CAJA.alto
+        const yy = d.cell.y + 0.25 + Math.floor(k / porLinea) * CAJA.alto
         doc.setDrawColor(200).setLineWidth(0.1).rect(x, yy, CAJA.ancho - 1, CAJA.alto - 1)
         doc.setFont('helvetica', 'normal').setFontSize(6.5).setTextColor(110)
         doc.text(t.nombre, x + (CAJA.ancho - 1) / 2, yy + 2.8, { align: 'center' })
