@@ -6,6 +6,7 @@ import { ErrorBox } from '@/components/ui/estado'
 import { Field, Input, Select, Textarea } from '@/components/ui/field'
 import { Modal } from '@/components/ui/modal'
 import { useCatalogo } from '@/hooks/useCatalogo'
+import { usePedidos } from '@/hooks/usePedidos'
 import { usePedidosCliente } from '@/hooks/usePedidosCliente'
 import { formatCantidad, formatGs, formatUsd, hoyIso } from '@/lib/format'
 import type { PedidoCliente } from '@/lib/tipos'
@@ -29,6 +30,9 @@ export function PedidoClienteFormModal({
   const { data: clientes } = useCatalogo('clientes')
   const { guardar, refetch } = usePedidosCliente()
   const { deLineas } = useConstructorGrupos()
+  const { data: pedidosFabrica } = usePedidos()
+  const { nombres: nombreProveedor } = useCatalogo('proveedores')
+  const [pedidoFabricaId, setPedidoFabricaId] = useState('')
 
   const [clienteId, setClienteId] = useState('')
   const [fecha, setFecha] = useState(hoyIso())
@@ -51,6 +55,31 @@ export function PedidoClienteFormModal({
   }, [abierto, pedido?.id])
 
   const totales = totalesDeGrupos(grupos)
+
+  /** Agrega lo que aún no está asignado a otros clientes de un pedido a fábrica. */
+  function traerPedidoFabrica() {
+    const ped = pedidosFabrica.find((x) => x.id === pedidoFabricaId)
+    if (!ped) return
+    const lineas = ped.lineas
+      .map((l) => {
+        const libre = l.cantidad - l.asignado
+        const entera = libre === l.cantidad
+        return {
+          ...l,
+          id: '',
+          cantidad: libre,
+          porCaja: entera ? l.porCaja : 0,
+          cajas: entera ? l.cajas : 0,
+          comprometido: 0,
+        }
+      })
+      .filter((l) => l.cantidad > 0)
+    if (lineas.length === 0) return toast.info('Ese pedido ya está asignado por completo.')
+    const nuevos = deLineas(lineas).filter((g) => !grupos.some((x) => x.productoId === g.productoId))
+    if (nuevos.length === 0) return toast.info('Esos productos ya están en el pedido.')
+    setGrupos((gs) => [...gs, ...nuevos])
+    setPedidoFabricaId('')
+  }
 
   async function onGuardar() {
     if (!clienteId) return setError('Elige el cliente.')
@@ -117,6 +146,26 @@ export function PedidoClienteFormModal({
             <Textarea className="min-h-9.5" rows={1} value={notas} maxLength={2000} onChange={(e) => setNotas(e.target.value)} />
           </Field>
         </div>
+
+        {!pedido && (
+          <div className="flex flex-wrap items-end gap-2 rounded-md border border-primary/30 bg-accent/60 px-3 py-2.5">
+            <Field label="Traer un pedido a fábrica completo" className="min-w-64 flex-1">
+              <Select value={pedidoFabricaId} onChange={(e) => setPedidoFabricaId(e.target.value)}>
+                <option value="">Elegir pedido…</option>
+                {pedidosFabrica
+                  .filter((x) => x.estado !== 'cancelado' && x.lineas.some((l) => l.cantidad > l.asignado))
+                  .map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.folio} · {nombreProveedor.get(x.proveedorId) ?? '—'}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+            <Button variant="outline" onClick={traerPedidoFabrica} disabled={!pedidoFabricaId}>
+              Traer productos
+            </Button>
+          </div>
+        )}
 
         <EditorProductos
           grupos={grupos}
