@@ -11,6 +11,36 @@ import { usePedidosCliente } from '@/hooks/usePedidosCliente'
 import { formatCantidad, formatGs, formatUsd, hoyIso } from '@/lib/format'
 import type { PedidoCliente } from '@/lib/tipos'
 
+const num = (t: string | undefined) => Number((t ?? '').replace(',', '.')) || 0
+
+/**
+ * Suma las cantidades de `g` a las de `x` (mismo producto). Si el color tiene la misma curva se
+ * suman las cajas; si no, las curvas no se pueden combinar y queda el total de cada tamaño como 1 caja.
+ */
+function sumarGrupo(x: GrupoForm, g: GrupoForm): GrupoForm {
+  const colores = [...x.ejes.colores, ...g.ejes.colores.filter((c) => !x.ejes.colores.includes(c))]
+  const tamanos = [...x.ejes.tamanos, ...g.ejes.tamanos.filter((t) => !x.ejes.tamanos.some((u) => u.id === t.id))]
+  const cantidades = { ...x.cantidades }
+  for (const [k, v] of Object.entries(g.cantidades)) cantidades[k] = String(num(cantidades[k]) + num(v))
+  const curva = { ...x.curva }
+  const cajas = { ...x.cajas }
+  for (const color of g.ejes.colores) {
+    const a = x.curva[color] ?? {}
+    const b = g.curva[color] ?? {}
+    const ids = [...new Set([...Object.keys(a), ...Object.keys(b)])]
+    if (ids.length === 0) continue
+    if (num(x.cajas[color]) > 0 && ids.every((id) => num(a[id]) === num(b[id]))) {
+      cajas[color] = String(num(x.cajas[color]) + num(g.cajas[color]))
+    } else {
+      const total: Record<string, string> = {}
+      for (const id of ids) total[id] = String(num(a[id]) * (num(x.cajas[color]) || 1) + num(b[id]) * (num(g.cajas[color]) || 1))
+      curva[color] = total
+      cajas[color] = '1'
+    }
+  }
+  return { ...x, ejes: { ...x.ejes, colores, tamanos }, cantidades, curva, cajas }
+}
+
 export function PedidoClienteFormModal({
   abierto,
   pedido,
@@ -75,9 +105,15 @@ export function PedidoClienteFormModal({
       })
       .filter((l) => l.cantidad > 0)
     if (lineas.length === 0) return toast.info('Ese pedido ya está asignado por completo.')
-    const nuevos = deLineas(lineas).filter((g) => !grupos.some((x) => x.productoId === g.productoId))
-    if (nuevos.length === 0) return toast.info('Esos productos ya están en el pedido.')
-    setGrupos((gs) => [...gs, ...nuevos])
+    setGrupos((gs) => {
+      let r = gs
+      for (const g of deLineas(lineas)) {
+        r = r.some((x) => x.productoId === g.productoId)
+          ? r.map((x) => (x.productoId === g.productoId ? sumarGrupo(x, g) : x))
+          : [...r, g]
+      }
+      return r
+    })
     setPedidoFabricaId('')
   }
 
