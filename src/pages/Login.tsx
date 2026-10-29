@@ -43,8 +43,7 @@ export default function Login() {
 
       <div className="relative z-10 w-full max-w-sm">
         <div className="mb-7 text-center">
-          <img src="/logo-completo.svg" alt="Pedidos ON" className="mx-auto mb-2 h-36 w-auto dark:hidden" />
-          <img src="/logo-completo-oscuro.svg" alt="Pedidos ON" className="mx-auto mb-2 hidden h-36 w-auto dark:block" />
+          <img src="/logo-on.png" alt="ON Brand &amp; Trade" className="mx-auto mb-3 h-32 w-auto dark:drop-shadow-[0_0_6px_rgba(255,255,255,0.35)]" />
           <h1 className="sr-only">Pedidos ON</h1>
           <p className="mt-1 text-sm text-muted-foreground">Ingresa con tu cuenta</p>
         </div>

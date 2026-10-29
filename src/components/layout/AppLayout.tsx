@@ -40,7 +40,7 @@ export default function AppLayout() {
       <header className="sticky top-0 z-40 border-b border-border bg-card/85 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:px-6">
           <span className="flex min-w-0 items-center gap-2">
-            <img src="/logo.svg" alt="" className="size-7 shrink-0 rounded-md" />
+            <img src="/logo-on.png" alt="" className="h-7 w-auto shrink-0" />
             <span className="truncate text-sm font-semibold text-foreground">Pedidos ON</span>
           </span>
 
