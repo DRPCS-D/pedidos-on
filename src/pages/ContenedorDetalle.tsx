@@ -39,7 +39,6 @@ export default function ContenedorDetalle() {
   const { porId, loading, error, refetch, cambiarEstado, borrar, deshacerEstado } = useContenedores()
   const { porId: pedidoPorId } = usePedidos()
   const { nombres: nombreProveedor } = useCatalogo('proveedores')
-  const { nombres: nombreCliente } = useCatalogo('clientes')
 
   const contenedor = porId.get(id)
   const [editando, setEditando] = useState(false)
@@ -182,7 +181,7 @@ export default function ContenedorDetalle() {
                         <span className="font-semibold text-foreground">Pedido</span>
                       )}
                       <span className="text-muted-foreground">
-                        {p && ` · ${nombreProveedor.get(p.proveedorId) ?? '—'} → ${nombreCliente.get(p.clienteId) ?? 'Stock'}`}
+                        {p && ` · ${nombreProveedor.get(p.proveedorId) ?? '—'}`}
                       </span>
                     </p>
                     {p && <BadgeEstadoPedido estado={p.estado} />}

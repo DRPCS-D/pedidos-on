@@ -22,7 +22,6 @@ export interface DatosLinea {
 
 export interface DatosPedido {
   proveedorId: string
-  clienteId: string
   fechaPedido: string
   notas: string
   lineas: DatosLinea[]

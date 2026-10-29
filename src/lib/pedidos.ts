@@ -20,11 +20,13 @@ export interface TotalesPedido {
   ventaGs: number
 }
 
-export function totalesLineas(lineas: Pick<LineaPedido, 'cantidad' | 'precioCosto' | 'precioVentaUsd' | 'precioVentaGs'>[]): TotalesPedido {
+export function totalesLineas(
+  lineas: (Pick<LineaPedido, 'cantidad' | 'precioVentaUsd' | 'precioVentaGs'> & { precioCosto?: number })[],
+): TotalesPedido {
   const t: TotalesPedido = { unidades: 0, costo: 0, ventaUsd: 0, ventaGs: 0 }
   for (const l of lineas) {
     t.unidades += l.cantidad
-    t.costo += l.cantidad * l.precioCosto
+    t.costo += l.cantidad * (l.precioCosto ?? 0)
     t.ventaUsd += l.cantidad * l.precioVentaUsd
     t.ventaGs += l.cantidad * l.precioVentaGs
   }

@@ -172,13 +172,14 @@ export interface LineaPedido {
   precioVentaGs: number
   /** Cantidad ya cargada en contenedores (calculado por el backend). */
   cargado: number
+  /** Cantidad ya asignada a pedidos de cliente; el resto es stock propio. */
+  asignado: number
 }
 
 export interface Pedido {
   id: string
   folio: string
   proveedorId: string
-  clienteId: string
   estado: EstadoPedido
   /** 'yyyy-MM-dd' */
   fechaPedido: string
@@ -189,6 +190,50 @@ export interface Pedido {
   /** Fecha del último cambio de estado, 'yyyy-MM-dd'. */
   fechaEstado: string
   lineas: LineaPedido[]
+}
+
+export type EstadoPedidoCliente = 'registrado' | 'entregado' | 'cancelado'
+
+export const ESTADO_PC_LABEL: Record<EstadoPedidoCliente, string> = {
+  registrado: 'Registrado',
+  entregado: 'Entregado',
+  cancelado: 'Cancelado',
+}
+
+/** Lo que pidió el cliente de una variante (producto, color y tamaño) y cuánto está cubierto. */
+export interface LineaPedidoCliente {
+  id: string
+  pcId: string
+  productoId: string
+  codigo: string
+  descripcion: string
+  color: string
+  marca: string
+  tamano: string
+  tamanoId: string
+  cantidad: number
+  precioVentaUsd: number
+  precioVentaGs: number
+  porCaja: number
+  cajas: number
+  /** Unidades cubiertas desde pedidos a fábrica y de dónde vienen. */
+  asignado: number
+  asignaciones: { lineaId: string; pedidoId: string; cantidad: number }[]
+}
+
+export interface PedidoCliente {
+  id: string
+  folio: string
+  clienteId: string
+  estado: EstadoPedidoCliente
+  /** 'yyyy-MM-dd' */
+  fecha: string
+  notas: string
+  creadoPor: string
+  creadoNombre: string
+  fechaCreacion: string
+  fechaEstado: string
+  lineas: LineaPedidoCliente[]
 }
 
 export interface Carga {
@@ -221,7 +266,7 @@ export interface Contenedor {
 
 export interface RegistroHistorial {
   id: string
-  entidad: 'pedido' | 'contenedor'
+  entidad: 'pedido' | 'contenedor' | 'pedidoCliente'
   entidadId: string
   estado: string
   /** 'yyyy-MM-dd' */

@@ -7,7 +7,7 @@ export function LineaDeTiempo({
   id,
   etiquetas,
 }: {
-  entidad: 'pedido' | 'contenedor'
+  entidad: 'pedido' | 'contenedor' | 'pedidoCliente'
   id: string
   etiquetas: Record<string, string>
 }) {

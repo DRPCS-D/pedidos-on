@@ -15,6 +15,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import { useContenedores } from '@/hooks/useContenedores'
 import { usePedidos } from '@/hooks/usePedidos'
+import { usePedidosCliente } from '@/hooks/usePedidosCliente'
 import { formatCantidad, formatFecha, formatGs, formatUsd } from '@/lib/format'
 import {
   agruparPorProducto,
@@ -43,6 +44,7 @@ export default function PedidoDetalle() {
   const { porId, loading, error, refetch, cambiarEstado, borrar, deshacerEstado } = usePedidos()
   const { nombres: nombreProveedor } = useCatalogo('proveedores')
   const { nombres: nombreCliente } = useCatalogo('clientes')
+  const { data: pedidosCliente } = usePedidosCliente()
   const { data: contenedores } = useContenedores()
 
   const pedido = porId.get(id)
@@ -52,6 +54,16 @@ export default function PedidoDetalle() {
   const [procesando, setProcesando] = useState(false)
 
   const t = useMemo(() => (pedido ? totalesLineas(pedido.lineas) : null), [pedido])
+  /** Pedidos de cliente que se abastecen de este pedido, con las unidades de cada uno. */
+  const clientesDelPedido = useMemo(() => {
+    if (!pedido) return []
+    return pedidosCliente
+      .map((c) => ({
+        ...c,
+        unidades: c.lineas.reduce((s, l) => s + l.asignaciones.filter((a) => a.pedidoId === pedido.id).reduce((n, a) => n + a.cantidad, 0), 0),
+      }))
+      .filter((c) => c.unidades > 0 && c.estado !== 'cancelado')
+  }, [pedidosCliente, pedido])
   const enContenedores = useMemo(() => {
     if (!pedido) return []
     return contenedores
@@ -76,6 +88,7 @@ export default function PedidoDetalle() {
   }
 
   const carga = cargaDePedido(pedido)
+  const asignadoTotal = pedido.lineas.reduce((s, l) => s + l.asignado, 0)
   const permitidos = estadosManualesPermitidos(pedido.estado, tieneCargas(pedido))
   const siguiente = siguienteEstadoManual(pedido.estado)
   const abierto = pedido.estado !== 'cancelado' && pedido.estado !== 'entregado'
@@ -136,8 +149,11 @@ export default function PedidoDetalle() {
 
         <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Dato label="Fábrica">{nombreProveedor.get(pedido.proveedorId) ?? '—'}</Dato>
-          <Dato label="Cliente">
-            {pedido.clienteId ? (nombreCliente.get(pedido.clienteId) ?? '—') : <span className="text-muted-foreground">Stock propio</span>}
+          <Dato label="Asignado a clientes">
+            {formatCantidad(asignadoTotal)} de {formatCantidad(t.unidades)} unid.
+            {asignadoTotal < t.unidades && (
+              <span className="text-muted-foreground"> · stock {formatCantidad(t.unidades - asignadoTotal)}</span>
+            )}
           </Dato>
           <Dato label="Fecha del pedido">{formatFecha(pedido.fechaPedido)}</Dato>
           <Dato label="Carga en contenedores">{CARGA_LABEL[carga]}</Dato>
@@ -239,6 +255,27 @@ export default function PedidoDetalle() {
           <LineaDeTiempo entidad="pedido" id={pedido.id} etiquetas={ESTADO_PEDIDO_LABEL} />
         </section>
       </div>
+
+      <section className="rounded-lg border border-border bg-card p-5 shadow-xs">
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Clientes</h2>
+        {clientesDelPedido.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Todavía no está asignado a ningún cliente: todo es stock propio.
+          </p>
+        ) : (
+          <ul className="divide-y divide-border rounded-md border border-border">
+            {clientesDelPedido.map((c) => (
+              <li key={c.id}>
+                <Link to={`/pedidos-cliente/${c.id}`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-accent/40">
+                  <span className="font-medium text-foreground">{c.folio}</span>
+                  <span className="text-muted-foreground">{nombreCliente.get(c.clienteId) ?? '—'}</span>
+                  <span className="tabular text-xs text-foreground">{formatCantidad(c.unidades)} unid.</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="rounded-lg border border-border bg-card p-5 shadow-xs">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Documentos</h2>

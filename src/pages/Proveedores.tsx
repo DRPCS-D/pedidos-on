@@ -36,7 +36,7 @@ export default function Proveedores() {
       singular="proveedor"
       campos={CAMPOS}
       columnas={columnas}
-      extra={(r) => <PedidosDe campo="proveedorId" id={r.id} />}
+      extra={(r) => <PedidosDe id={r.id} />}
     />
   )
 }

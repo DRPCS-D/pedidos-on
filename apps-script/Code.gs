@@ -49,6 +49,10 @@ var ENCABEZADOS = {
   Contenedores: ['id', 'numero', 'tipo', 'naviera', 'bl', 'puertoOrigen', 'puertoDestino', 'etd', 'eta',
                  'estado', 'notas', 'creadoPor', 'fechaCreacion'],
   Cargas: ['id', 'contenedorId', 'pedidoId', 'lineaId', 'cantidad'],
+  PedidosCliente: ['id', 'folio', 'clienteId', 'estado', 'fecha', 'notas', 'creadoPor', 'fechaCreacion', 'fechaEstado'],
+  PCLineas: ['id', 'pcId', 'productoId', 'codigo', 'descripcion', 'color', 'marca', 'tamano', 'tamanoId',
+             'cantidad', 'precioVentaUsd', 'precioVentaGs', 'porCaja', 'cajas'],
+  Asignaciones: ['id', 'pcLineaId', 'lineaId', 'cantidad'],
   Historial: ['id', 'entidad', 'entidadId', 'estado', 'fecha', 'usuario', 'nota', 'registrado'],
   Archivos: ['id', 'entidad', 'entidadId', 'driveId', 'nombre', 'mime', 'bytes', 'principal', 'subidoPor', 'fecha'],
   Config: ['clave', 'valor']
@@ -69,6 +73,8 @@ var ESTADOS_PEDIDO = ['registrado', 'confirmado', 'en_fabricacion', 'fabricado',
 var MANUALES_PEDIDO = ['registrado', 'confirmado', 'en_fabricacion', 'fabricado', 'entregado', 'cancelado'];
 var ESTADOS_CONTENEDOR = ['preparando', 'embarcado', 'en_transito', 'en_puerto', 'desembarcado'];
 var TIPOS_CONTENEDOR = ['20', '40', '40HC', 'otro'];
+/** El pedido de cliente solo tiene estados manuales; dónde está su mercadería lo dan los pedidos a fábrica asignados. */
+var ESTADOS_PC = ['registrado', 'entregado', 'cancelado'];
 
 var MAX_ARCHIVO_BYTES = 10 * 1024 * 1024;
 var CARPETA_RAIZ = 'Pedidos ON - Archivos';
@@ -101,7 +107,7 @@ var CATALOGOS = {
 };
 
 var REVISIONES = ['usuarios', 'proveedores', 'clientes', 'marcas', 'tamanos', 'productos', 'pedidos',
-                  'contenedores', 'historial', 'archivos', 'config'];
+                  'contenedores', 'historial', 'archivos', 'config', 'pedidosCliente'];
 
 // ---------- Entrada ----------
 
@@ -142,6 +148,12 @@ function doPost(e) {
       case 'cambiarEstadoContenedor': return handleCambiarEstadoContenedor_(body);
       case 'borrarContenedor':       return handleBorrarContenedor_(body);
       case 'deshacerEstado':         return handleDeshacerEstado_(body);
+      case 'listPedidosCliente':     return handleListPedidosCliente_(body);
+      case 'guardarPedidoCliente':   return handleGuardarPedidoCliente_(body);
+      case 'asignarPedidoCliente':   return handleAsignarPedidoCliente_(body);
+      case 'asignarAutomatico':      return handleAsignarAutomatico_(body);
+      case 'cambiarEstadoPedidoCliente': return handleCambiarEstadoPedidoCliente_(body);
+      case 'borrarPedidoCliente':    return handleBorrarPedidoCliente_(body);
       case 'listHistorial':          return handleListHistorial_(body);
       case 'getConfig':              return handleGetConfig_(body);
       case 'setConfig':              return handleSetConfig_(body);
@@ -572,11 +584,13 @@ function handleListPedidos_(body) {
   requireAuth_(body);
   var nombres = mapaNombres_();
   var cargado = cargadoPorLinea_();
+  var asignado = asignadoPorLinea_();
   var lineasPorPedido = {};
   leer_('PedidoLineas').filas.forEach(function (l) {
     if (!l.id) return;
     var x = limpiar_(l);
     x.cargado = cargado[l.id] || 0;
+    x.asignado = asignado[l.id] || 0;
     (lineasPorPedido[l.pedidoId] = lineasPorPedido[l.pedidoId] || []).push(x);
   });
   var lista = leer_('Pedidos').filas.filter(function (p) { return p.id; }).map(function (p) {
@@ -600,11 +614,9 @@ function handleListPedidos_(body) {
 function handleGuardarPedido_(body) {
   var user = requireEditor_(body);
   var proveedorId = texto_(body.proveedorId, 40);
-  var clienteId = texto_(body.clienteId, 40);
   var fechaPedido = texto_(body.fechaPedido, 10);
   if (!proveedorId) throw new Error('El proveedor es obligatorio.');
   validarReferencia_('Proveedores', proveedorId, 'El proveedor');
-  validarReferencia_('Clientes', clienteId, 'El cliente');
   if (!fechaValida_(fechaPedido)) throw new Error('La fecha del pedido no es válida.');
   var lineasIn = Array.isArray(body.lineas) ? body.lineas : [];
   if (!lineasIn.length) throw new Error('El pedido debe tener al menos un producto con cantidad.');
@@ -620,7 +632,6 @@ function handleGuardarPedido_(body) {
         throw new Error('No se puede modificar un pedido ' + pedido.estado + '.');
       }
       pedido.proveedorId = proveedorId;
-      pedido.clienteId = clienteId;
       pedido.fechaPedido = fechaPedido;
       pedido.notas = texto_(body.notas, 2000);
       escribir_('Pedidos', pedido);
@@ -628,7 +639,7 @@ function handleGuardarPedido_(body) {
       // El pedido nace «registrado» en la fecha en que se hizo (no después de hoy).
       var desde = fechaPedido > hoy_() ? hoy_() : fechaPedido;
       pedido = {
-        id: nuevoId_(), folio: siguienteFolio_(tP), proveedorId: proveedorId, clienteId: clienteId,
+        id: nuevoId_(), folio: siguienteFolio_(tP), proveedorId: proveedorId, clienteId: '',
         estado: 'registrado', fechaPedido: fechaPedido, notas: texto_(body.notas, 2000),
         creadoPor: user.usuario, fechaCreacion: new Date().toISOString(), fechaEstado: desde
       };
@@ -641,15 +652,39 @@ function handleGuardarPedido_(body) {
   return jsonOut_({ ok: true, id: resultado.id, folio: resultado.folio });
 }
 
+/** Líneas de un pedido a fábrica: no se pueden bajar de lo cargado en contenedores ni de lo asignado a clientes. */
 function guardarLineas_(pedidoId, lineasIn) {
-  var tL = leer_('PedidoLineas');
+  guardarLineasDe_({
+    hoja: 'PedidoLineas', dueno: 'pedidoId', duenoId: pedidoId, conCosto: true,
+    comprometidos: [
+      { mapa: cargadoPorLinea_(), texto: 'cargados en contenedores' },
+      { mapa: asignadoPorLinea_(), texto: 'asignados a clientes' }
+    ]
+  }, lineasIn);
+}
+
+/** Líneas de un pedido de cliente: no se pueden bajar de lo ya asignado desde pedidos a fábrica. */
+function guardarLineasCliente_(pcId, lineasIn) {
+  guardarLineasDe_({
+    hoja: 'PCLineas', dueno: 'pcId', duenoId: pcId, conCosto: false,
+    comprometidos: [{ mapa: asignadoPorPcLinea_(), texto: 'asignados desde pedidos a fábrica' }]
+  }, lineasIn);
+}
+
+/**
+ * Guarda las líneas de un pedido (a fábrica o de cliente), una por producto, color y
+ * tamaño. `cfg`: { hoja, dueno (columna con el id del pedido), duenoId, conCosto,
+ * comprometidos: [{ mapa lineaId→cantidad, texto }] }. Una línea existente conserva su
+ * color y tamaño; con curva (porCaja × cajas) la cantidad se calcula.
+ */
+function guardarLineasDe_(cfg, lineasIn) {
+  var tL = leer_(cfg.hoja);
   var productos = leer_('Productos');
   var marcas = mapaNombresCatalogo_('Marcas');
   var tamanos = mapaNombresCatalogo_('Tamanos');
   var coloresPor = variantesPorProducto_('ProductoColores', 'color');
   var tamanosPor = variantesPorProducto_('ProductoTamanos', 'tamanoId');
-  var cargado = cargadoPorLinea_();
-  var existentes = tL.filas.filter(function (l) { return l.pedidoId === pedidoId; });
+  var existentes = tL.filas.filter(function (l) { return l[cfg.dueno] === cfg.duenoId; });
   var vistos = {};
   var variantes = {}; // producto|color|tamaño: no puede repetirse dentro del pedido
   var claveVariante = function (productoId, color, tamanoId) {
@@ -658,6 +693,14 @@ function guardarLineas_(pedidoId, lineasIn) {
   var registrar = function (codigo, clave) {
     if (variantes[clave]) throw new Error(codigo + ': esa combinación de color y tamaño está repetida.');
     variantes[clave] = true;
+  };
+  var verificar = function (l, cantidad, quitando) {
+    cfg.comprometidos.forEach(function (c) {
+      var n = c.mapa[l.id] || 0;
+      var etiqueta = [l.codigo, l.color, l.tamano].filter(String).join(' ');
+      if (quitando && n > 0) throw new Error('No se puede quitar ' + etiqueta + ': tiene ' + n + ' ' + c.texto + '.');
+      if (!quitando && cantidad < n) throw new Error(etiqueta + ': ya tiene ' + n + ' ' + c.texto + '.');
+    });
   };
 
   lineasIn.forEach(function (li) {
@@ -669,24 +712,21 @@ function guardarLineas_(pedidoId, lineasIn) {
     else { porCaja = 0; cajas = 0; }
     if (!(cantidad > 0)) throw new Error('Cada línea debe tener una cantidad mayor que cero.');
     var precios = {
-      precioCosto: numero_(li.precioCosto, 'El precio de costo'),
       precioVentaUsd: numero_(li.precioVentaUsd, 'El precio de venta en USD'),
       precioVentaGs: Math.round(numero_(li.precioVentaGs, 'El precio de venta en Gs'))
     };
+    if (cfg.conCosto) precios.precioCosto = numero_(li.precioCosto, 'El precio de costo');
     var lid = String(li.id || '').trim();
     var actual = lid ? existentes.filter(function (l) { return l.id === lid; })[0] : null;
     if (actual) {
-      // Una línea existente conserva su color y tamaño; solo cambian cantidad y precios.
       vistos[lid] = true;
       registrar(actual.codigo, claveVariante(actual.productoId, actual.color, actual.tamanoId));
-      if (cantidad < (cargado[lid] || 0)) {
-        throw new Error(actual.codigo + ' ' + actual.color + ' ' + actual.tamano + ': ya tiene ' + cargado[lid] + ' cargados en contenedores.');
-      }
+      verificar(actual, cantidad, false);
       actual.cantidad = cantidad;
       actual.porCaja = porCaja;
       actual.cajas = cajas;
       Object.keys(precios).forEach(function (k) { actual[k] = precios[k]; });
-      escribir_('PedidoLineas', actual);
+      escribir_(cfg.hoja, actual);
       return;
     }
     var prod = buscar_(productos, 'id', String(li.productoId || ''));
@@ -709,33 +749,48 @@ function guardarLineas_(pedidoId, lineasIn) {
     }
     registrar(prod.codigo, claveVariante(prod.id, color, tamanoId));
     var nueva = {
-      id: nuevoId_(), pedidoId: pedidoId, productoId: prod.id, codigo: prod.codigo,
+      id: nuevoId_(), productoId: prod.id, codigo: prod.codigo,
       descripcion: prod.descripcion, color: color, marca: marcas[prod.marcaId] || '',
       tamano: tamanos[tamanoId] || '', tamanoId: tamanoId, cantidad: cantidad,
       porCaja: porCaja, cajas: cajas
     };
+    nueva[cfg.dueno] = cfg.duenoId;
     Object.keys(precios).forEach(function (k) { nueva[k] = precios[k]; });
-    agregar_('PedidoLineas', nueva);
+    agregar_(cfg.hoja, nueva);
   });
 
   // Las que no vinieron se borran (de abajo hacia arriba para no correr los índices).
-  var sheet = hoja_('PedidoLineas');
+  var sheet = hoja_(cfg.hoja);
   existentes.filter(function (l) { return !vistos[l.id]; })
     .sort(function (a, b) { return b._fila - a._fila; })
     .forEach(function (l) {
-      if (cargado[l.id]) throw new Error('No se puede quitar ' + l.codigo + ' ' + l.color + ' ' + l.tamano + ': está cargado en un contenedor.');
+      verificar(l, 0, true);
       borrarFila_(sheet, l._fila);
     });
 }
 
-/** Devuelve el siguiente folio 'PED-0001'. */
-function siguienteFolio_(tabla) {
+/** Cantidad asignada a clientes, por línea de pedido a fábrica. */
+function asignadoPorLinea_() {
+  var m = {};
+  leer_('Asignaciones').filas.forEach(function (a) { m[a.lineaId] = (m[a.lineaId] || 0) + Number(a.cantidad || 0); });
+  return m;
+}
+
+/** Cantidad ya cubierta desde pedidos a fábrica, por línea de pedido de cliente. */
+function asignadoPorPcLinea_() {
+  var m = {};
+  leer_('Asignaciones').filas.forEach(function (a) { m[a.pcLineaId] = (m[a.pcLineaId] || 0) + Number(a.cantidad || 0); });
+  return m;
+}
+
+/** Devuelve el siguiente folio 'PED-0001' (o con otro prefijo, p. ej. 'PC'). */
+function siguienteFolio_(tabla, prefijo) {
   var max = 0;
   tabla.filas.forEach(function (p) {
     var n = parseInt(String(p.folio).replace(/[^0-9]/g, ''), 10);
     if (!isNaN(n) && n > max) max = n;
   });
-  return 'PED-' + ('000' + (max + 1)).slice(-Math.max(4, String(max + 1).length));
+  return (prefijo || 'PED') + '-' + ('000' + (max + 1)).slice(-Math.max(4, String(max + 1).length));
 }
 
 /** Cambio manual de estado (registrado…fabricado, entregado, cancelado). */
@@ -746,7 +801,7 @@ function handleCambiarEstadoPedido_(body) {
   var fecha = fechaCambio_(body.fecha);
   var nota = texto_(body.nota, 500);
 
-  conLock_(['pedidos', 'historial'], function () {
+  conLock_(['pedidos', 'historial', 'pedidosCliente'], function () {
     var p = buscar_(leer_('Pedidos'), 'id', String(body.id || ''));
     if (!p) throw new Error('El pedido ya no existe.');
     var actual = normalizarEstadoPedido_(p.estado);
@@ -766,6 +821,12 @@ function handleCambiarEstadoPedido_(body) {
     p.fechaEstado = fecha;
     escribir_('Pedidos', p);
     agregarHistorial_('pedido', p.id, estado, fecha, user.usuario, nota);
+    // Un pedido cancelado ya no puede abastecer a nadie: lo asignado a clientes vuelve a quedar pendiente.
+    if (estado === 'cancelado') {
+      var propias = {};
+      leer_('PedidoLineas').filas.forEach(function (l) { if (l.pedidoId === p.id) propias[l.id] = true; });
+      borrarAsignacionesDonde_(function (a) { return propias[a.lineaId]; });
+    }
   });
   return jsonOut_({ ok: true });
 }
@@ -782,6 +843,254 @@ function handleBorrarPedido_(body) {
     borrarHistorial_('pedido', id);
     borrarArchivosDe_('pedido', id);
     borrarFila_(hoja_('Pedidos'), p._fila);
+  });
+  return jsonOut_({ ok: true });
+}
+
+// ---------- Pedidos de cliente ----------
+// Un pedido de cliente guarda lo que pidió el cliente (producto, color, tamaño, cantidad y su
+// precio de venta). Se cubre asignándole cantidades de líneas de pedidos a fábrica de la misma
+// variante (Asignaciones): ya sea porque la fábrica ya tiene el pedido o porque se pide después.
+// Lo que de un pedido a fábrica no se asigna a nadie es stock propio.
+
+function borrarAsignacionesDonde_(condicion) {
+  var sheet = hoja_('Asignaciones');
+  leer_('Asignaciones').filas.filter(condicion)
+    .sort(function (a, b) { return b._fila - a._fila; })
+    .forEach(function (a) { borrarFila_(sheet, a._fila); });
+}
+
+function handleListPedidosCliente_(body) {
+  requireAuth_(body);
+  var nombres = mapaNombres_();
+  var pedidoDeLinea = {};
+  leer_('PedidoLineas').filas.forEach(function (l) { pedidoDeLinea[l.id] = l.pedidoId; });
+  var asigPor = {};
+  leer_('Asignaciones').filas.forEach(function (a) {
+    if (!a.id) return;
+    (asigPor[a.pcLineaId] = asigPor[a.pcLineaId] || []).push({
+      lineaId: a.lineaId, pedidoId: pedidoDeLinea[a.lineaId] || '', cantidad: a.cantidad
+    });
+  });
+  var lineasPor = {};
+  leer_('PCLineas').filas.forEach(function (l) {
+    if (!l.id) return;
+    var x = limpiar_(l);
+    x.asignaciones = asigPor[l.id] || [];
+    x.asignado = x.asignaciones.reduce(function (sum, a) { return sum + a.cantidad; }, 0);
+    (lineasPor[l.pcId] = lineasPor[l.pcId] || []).push(x);
+  });
+  var lista = leer_('PedidosCliente').filas.filter(function (p) { return p.id; }).map(function (p) {
+    var x = limpiar_(p);
+    x.estado = ESTADOS_PC.indexOf(p.estado) === -1 ? 'registrado' : p.estado;
+    x.creadoNombre = nombreDe_(nombres, p.creadoPor);
+    x.lineas = lineasPor[p.id] || [];
+    return x;
+  });
+  lista.sort(function (a, b) { return String(b.folio).localeCompare(String(a.folio)); });
+  return jsonOut_({ ok: true, pedidosCliente: lista });
+}
+
+/**
+ * Alta o edición de un pedido de cliente con sus líneas (misma lógica que el pedido a
+ * fábrica, con precios de venta). Con `asignar: true` al terminar se asigna lo disponible.
+ */
+function handleGuardarPedidoCliente_(body) {
+  var user = requireEditor_(body);
+  var clienteId = texto_(body.clienteId, 40);
+  var fecha = texto_(body.fecha, 10);
+  if (!clienteId) throw new Error('El cliente es obligatorio.');
+  validarReferencia_('Clientes', clienteId, 'El cliente');
+  if (!fechaValida_(fecha)) throw new Error('La fecha del pedido no es válida.');
+  var lineasIn = Array.isArray(body.lineas) ? body.lineas : [];
+  if (!lineasIn.length) throw new Error('El pedido debe tener al menos un producto con cantidad.');
+  var id = String(body.id || '').trim();
+
+  var resultado = conLock_(['pedidosCliente', 'historial'], function () {
+    var tP = leer_('PedidosCliente');
+    var pc;
+    if (id) {
+      pc = buscar_(tP, 'id', id);
+      if (!pc) throw new Error('El pedido ya no existe.');
+      if (pc.estado === 'cancelado' || pc.estado === 'entregado') throw new Error('No se puede modificar un pedido ' + pc.estado + '.');
+      pc.clienteId = clienteId;
+      pc.fecha = fecha;
+      pc.notas = texto_(body.notas, 2000);
+      escribir_('PedidosCliente', pc);
+    } else {
+      var desde = fecha > hoy_() ? hoy_() : fecha;
+      pc = {
+        id: nuevoId_(), folio: siguienteFolio_(tP, 'PC'), clienteId: clienteId, estado: 'registrado',
+        fecha: fecha, notas: texto_(body.notas, 2000), creadoPor: user.usuario,
+        fechaCreacion: new Date().toISOString(), fechaEstado: desde
+      };
+      agregar_('PedidosCliente', pc);
+      agregarHistorial_('pedidoCliente', pc.id, 'registrado', desde, user.usuario, '');
+    }
+    guardarLineasCliente_(pc.id, lineasIn);
+    var asignado = 0;
+    if (body.asignar === true) asignado = asignarDisponible_([pc.id]);
+    return { id: pc.id, folio: pc.folio, asignado: asignado };
+  });
+  if (resultado.asignado) bumpRevisionTras_(['pedidos']);
+  return jsonOut_({ ok: true, id: resultado.id, folio: resultado.folio, asignado: resultado.asignado });
+}
+
+/** Sube una revisión tomando el lock (para cambios que ya se hicieron dentro de otro bloque). */
+function bumpRevisionTras_(revs) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try { revs.forEach(bumpRevision_); } finally { lock.releaseLock(); }
+}
+
+/**
+ * Asigna a los pedidos de cliente indicados todo lo que se pueda de lo que les falta,
+ * desde líneas de pedidos a fábrica de la misma variante (producto, color y tamaño), de
+ * los más antiguos a los más nuevos. Se debe llamar con el lock tomado. Devuelve las unidades asignadas.
+ */
+function asignarDisponible_(pcIds) {
+  var pedidos = {};
+  leer_('Pedidos').filas.forEach(function (p) { pedidos[p.id] = p; });
+  var lineasFab = leer_('PedidoLineas').filas.filter(function (l) { return pedidos[l.pedidoId] && pedidos[l.pedidoId].estado !== 'cancelado'; });
+  var libre = {};
+  var asignadoFab = asignadoPorLinea_();
+  lineasFab.forEach(function (l) { libre[l.id] = Number(l.cantidad) - (asignadoFab[l.id] || 0); });
+  lineasFab.sort(function (a, b) {
+    var pa = pedidos[a.pedidoId], pb = pedidos[b.pedidoId];
+    return (pa.fechaPedido + pa.folio).localeCompare(pb.fechaPedido + pb.folio);
+  });
+  var tAsig = leer_('Asignaciones');
+  var cubierto = asignadoPorPcLinea_();
+  var total = 0;
+
+  pcIds.forEach(function (pcId) {
+    leer_('PCLineas').filas.filter(function (l) { return l.pcId === pcId; }).forEach(function (pl) {
+      var falta = Number(pl.cantidad) - (cubierto[pl.id] || 0);
+      lineasFab.forEach(function (fl) {
+        if (falta <= 0 || libre[fl.id] <= 0) return;
+        if (fl.productoId !== pl.productoId || fl.tamanoId !== pl.tamanoId || fl.color.toUpperCase() !== pl.color.toUpperCase()) return;
+        var n = Math.min(falta, libre[fl.id]);
+        var previa = tAsig.filas.filter(function (a) { return a.pcLineaId === pl.id && a.lineaId === fl.id; })[0];
+        if (previa) {
+          previa.cantidad = Number(previa.cantidad) + n;
+          escribir_('Asignaciones', previa);
+        } else {
+          var nueva = { id: nuevoId_(), pcLineaId: pl.id, lineaId: fl.id, cantidad: n };
+          agregar_('Asignaciones', nueva);
+          tAsig.filas.push(nueva);
+        }
+        libre[fl.id] -= n;
+        falta -= n;
+        cubierto[pl.id] = (cubierto[pl.id] || 0) + n;
+        total += n;
+      });
+    });
+  });
+  return total;
+}
+
+/** Asigna a mano: reemplaza todas las asignaciones del pedido de cliente por las indicadas [{ pcLineaId, lineaId, cantidad }]. */
+function handleAsignarPedidoCliente_(body) {
+  requireEditor_(body);
+  var pcId = String(body.pcId || '').trim();
+  var entrada = Array.isArray(body.asignaciones) ? body.asignaciones : [];
+
+  conLock_(['pedidosCliente', 'pedidos'], function () {
+    var pc = buscar_(leer_('PedidosCliente'), 'id', pcId);
+    if (!pc) throw new Error('El pedido ya no existe.');
+    if (pc.estado !== 'registrado') throw new Error('Solo se asigna a un pedido de cliente registrado.');
+    var lineasPc = leer_('PCLineas').filas.filter(function (l) { return l.pcId === pcId; });
+    var propias = {};
+    lineasPc.forEach(function (l) { propias[l.id] = l; });
+    var pedidos = leer_('Pedidos');
+    var lineasFab = leer_('PedidoLineas');
+    // Lo asignado a OTROS pedidos de cliente, por línea de fábrica.
+    var otros = {};
+    leer_('Asignaciones').filas.forEach(function (a) {
+      if (!propias[a.pcLineaId]) otros[a.lineaId] = (otros[a.lineaId] || 0) + Number(a.cantidad || 0);
+    });
+
+    var nuevas = [];
+    var porPc = {}, porFab = {};
+    entrada.forEach(function (e) {
+      var n = numero_(e.cantidad, 'La cantidad');
+      if (!(n > 0)) return;
+      var pl = propias[String(e.pcLineaId || '')];
+      if (!pl) throw new Error('Una de las líneas del pedido de cliente ya no existe.');
+      var fl = buscar_(lineasFab, 'id', String(e.lineaId || ''));
+      if (!fl) throw new Error('Una de las líneas del pedido a fábrica ya no existe.');
+      var ped = buscar_(pedidos, 'id', fl.pedidoId);
+      if (!ped || ped.estado === 'cancelado') throw new Error('No se puede asignar desde un pedido a fábrica cancelado.');
+      if (fl.productoId !== pl.productoId || fl.tamanoId !== pl.tamanoId || fl.color.toUpperCase() !== pl.color.toUpperCase()) {
+        throw new Error(pl.codigo + ': el producto, color y tamaño deben coincidir con el pedido a fábrica.');
+      }
+      porPc[pl.id] = (porPc[pl.id] || 0) + n;
+      if (porPc[pl.id] > Number(pl.cantidad)) throw new Error(pl.codigo + ' ' + pl.color + ' ' + pl.tamano + ': se asignaría más de lo que pidió el cliente (' + pl.cantidad + ').');
+      porFab[fl.id] = (porFab[fl.id] || 0) + n;
+      if (porFab[fl.id] + (otros[fl.id] || 0) > Number(fl.cantidad)) {
+        throw new Error(ped.folio + ' / ' + fl.codigo + ' ' + fl.color + ' ' + fl.tamano + ': no alcanza lo disponible.');
+      }
+      nuevas.push({ id: nuevoId_(), pcLineaId: pl.id, lineaId: fl.id, cantidad: n });
+    });
+
+    borrarAsignacionesDonde_(function (a) { return propias[a.pcLineaId]; });
+    nuevas.forEach(function (n) { agregar_('Asignaciones', n); });
+  });
+  return jsonOut_({ ok: true });
+}
+
+/** Asigna lo disponible a un pedido de cliente (`pcId`) o a todos los registrados (sin `pcId`). */
+function handleAsignarAutomatico_(body) {
+  requireEditor_(body);
+  var pcId = String(body.pcId || '').trim();
+  var asignado = conLock_(['pedidosCliente', 'pedidos'], function () {
+    var tP = leer_('PedidosCliente').filas.filter(function (p) { return p.id && p.estado === 'registrado'; });
+    if (pcId) {
+      tP = tP.filter(function (p) { return p.id === pcId; });
+      if (!tP.length) throw new Error('El pedido no existe o no está registrado.');
+    }
+    tP.sort(function (a, b) { return String(a.fechaCreacion).localeCompare(String(b.fechaCreacion)); });
+    return asignarDisponible_(tP.map(function (p) { return p.id; }));
+  });
+  return jsonOut_({ ok: true, asignado: asignado });
+}
+
+function handleCambiarEstadoPedidoCliente_(body) {
+  var user = requireEditor_(body);
+  var estado = String(body.estado || '');
+  if (ESTADOS_PC.indexOf(estado) === -1) throw new Error('Estado no válido.');
+  var fecha = fechaCambio_(body.fecha);
+  var nota = texto_(body.nota, 500);
+  conLock_(['pedidosCliente', 'historial', 'pedidos'], function () {
+    var pc = buscar_(leer_('PedidosCliente'), 'id', String(body.id || ''));
+    if (!pc) throw new Error('El pedido ya no existe.');
+    if (pc.estado === estado) throw new Error('El pedido ya está en ese estado.');
+    validarFechaSecuencia_('pedidoCliente', pc.id, fecha);
+    pc.estado = estado;
+    pc.fechaEstado = fecha;
+    escribir_('PedidosCliente', pc);
+    agregarHistorial_('pedidoCliente', pc.id, estado, fecha, user.usuario, nota);
+    // Cancelado: lo asignado vuelve a estar disponible para otros.
+    if (estado === 'cancelado') {
+      var propias = {};
+      leer_('PCLineas').filas.forEach(function (l) { if (l.pcId === pc.id) propias[l.id] = true; });
+      borrarAsignacionesDonde_(function (a) { return propias[a.pcLineaId]; });
+    }
+  });
+  return jsonOut_({ ok: true });
+}
+
+/** Solo el admin, y solo pedidos de cliente cancelados. */
+function handleBorrarPedidoCliente_(body) {
+  requireAdmin_(body);
+  var id = String(body.id || '').trim();
+  conLock_(['pedidosCliente', 'historial'], function () {
+    var pc = buscar_(leer_('PedidosCliente'), 'id', id);
+    if (!pc) throw new Error('El pedido ya no existe.');
+    if (pc.estado !== 'cancelado') throw new Error('Solo se puede borrar un pedido cancelado. Cancélalo primero.');
+    borrarDonde_('PCLineas', 'pcId', id);
+    borrarHistorial_('pedidoCliente', id);
+    borrarFila_(hoja_('PedidosCliente'), pc._fila);
   });
   return jsonOut_({ ok: true });
 }
@@ -1028,14 +1337,21 @@ function handleDeshacerEstado_(body) {
   var user = requireAdmin_(body);
   var entidad = String(body.entidad || '');
   var id = String(body.id || '');
-  if (entidad !== 'pedido' && entidad !== 'contenedor') throw new Error('Entidad no válida.');
+  if (entidad !== 'pedido' && entidad !== 'contenedor' && entidad !== 'pedidoCliente') throw new Error('Entidad no válida.');
 
-  conLock_(['pedidos', 'contenedores', 'historial'], function () {
+  conLock_(['pedidos', 'contenedores', 'historial', 'pedidosCliente'], function () {
     var hist = historialDe_(entidad, id);
     if (hist.length < 2) throw new Error('No hay un cambio anterior al que volver.');
     var ultimo = hist[hist.length - 1];
     var anterior = hist[hist.length - 2];
-    if (entidad === 'pedido') {
+    if (entidad === 'pedidoCliente') {
+      var pcl = buscar_(leer_('PedidosCliente'), 'id', id);
+      if (!pcl) throw new Error('El pedido ya no existe.');
+      pcl.estado = anterior.estado;
+      pcl.fechaEstado = anterior.fecha;
+      escribir_('PedidosCliente', pcl);
+      borrarFila_(hoja_('Historial'), ultimo._fila);
+    } else if (entidad === 'pedido') {
       var p = buscar_(leer_('Pedidos'), 'id', id);
       if (!p) throw new Error('El pedido ya no existe.');
       if (MANUALES_PEDIDO.indexOf(ultimo.estado) === -1) {
@@ -1327,6 +1643,7 @@ function aplicarValidaciones_(ss) {
   poner('Usuarios', 'rol', lista(ROLES));
   poner('Pedidos', 'estado', lista(ESTADOS_PEDIDO));
   poner('Contenedores', 'estado', lista(ESTADOS_CONTENEDOR));
+  poner('PedidosCliente', 'estado', lista(ESTADOS_PC));
   poner('Contenedores', 'tipo', lista(TIPOS_CONTENEDOR));
 }
 

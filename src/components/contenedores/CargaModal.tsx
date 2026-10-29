@@ -63,7 +63,6 @@ export function CargaModal({
   const { data: pedidos } = usePedidos()
   const { guardarCargas, refetch } = useContenedores()
   const { nombres: nombreProveedor } = useCatalogo('proveedores')
-  const { nombres: nombreCliente } = useCatalogo('clientes')
 
   /** Cajas por grupo (clave) y unidades por línea (id), como texto. */
   const [cajas, setCajas] = useState<Record<string, string>>({})
@@ -126,10 +125,10 @@ export function CargaModal({
         if (items.length === 0) return false
         if (!q) return true
         return normalizar(
-          `${p.folio} ${nombreProveedor.get(p.proveedorId) ?? ''} ${nombreCliente.get(p.clienteId) ?? ''}`,
+          `${p.folio} ${nombreProveedor.get(p.proveedorId) ?? ''}`,
         ).includes(q)
       })
-  }, [pedidos, enEste, busqueda, nombreProveedor, nombreCliente])
+  }, [pedidos, enEste, busqueda, nombreProveedor])
 
   // Al abrir: lo que ya lleva el contenedor.
   useEffect(() => {
@@ -246,7 +245,7 @@ export function CargaModal({
           <Input
             aria-label="Buscar pedido"
             className="pl-9"
-            placeholder="Folio, fábrica o cliente…"
+            placeholder="Folio o fábrica…"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
           />
@@ -264,7 +263,7 @@ export function CargaModal({
                   <span className="font-semibold text-foreground">{p.folio}</span>
                   <span className="text-muted-foreground">
                     {' '}
-                    · {nombreProveedor.get(p.proveedorId) ?? '—'} → {nombreCliente.get(p.clienteId) ?? 'Stock'}
+                    · {nombreProveedor.get(p.proveedorId) ?? '—'}
                   </span>
                 </p>
                 <span className="flex items-center gap-2">

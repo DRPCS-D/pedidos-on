@@ -12,7 +12,8 @@ import { cn } from '@/lib/utils'
 
 const NAV_BASE = [
   { to: '/', label: 'Inicio', end: true },
-  { to: '/pedidos', label: 'Pedidos', end: false },
+  { to: '/pedidos', label: 'Pedidos fábrica', end: false },
+  { to: '/pedidos-cliente', label: 'Pedidos cliente', end: false },
   { to: '/contenedores', label: 'Contenedores', end: false },
   { to: '/productos', label: 'Productos', end: false },
   { to: '/clientes', label: 'Clientes', end: false },

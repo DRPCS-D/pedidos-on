@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { CatalogoSimple, type CampoCatalogo, type ColumnaCatalogo } from '@/components/catalogos/CatalogoSimple'
-import { PedidosDe } from '@/components/pedidos/PedidosDe'
-import { usePedidos } from '@/hooks/usePedidos'
+import { PedidosClienteDe } from '@/components/pedidosCliente/PedidosClienteDe'
+import { usePedidosCliente } from '@/hooks/usePedidosCliente'
 
 const CAMPOS: CampoCatalogo[] = [
   { clave: 'nombre', label: 'Nombre / razón social', max: 80, requerido: true },
@@ -13,10 +13,10 @@ const CAMPOS: CampoCatalogo[] = [
 ]
 
 export default function Clientes() {
-  const { data: pedidos } = usePedidos()
+  const { data: pedidos } = usePedidosCliente()
   const cuenta = useMemo(() => {
     const m = new Map<string, number>()
-    for (const p of pedidos) if (p.clienteId) m.set(p.clienteId, (m.get(p.clienteId) ?? 0) + 1)
+    for (const p of pedidos) m.set(p.clienteId, (m.get(p.clienteId) ?? 0) + 1)
     return m
   }, [pedidos])
 
@@ -32,11 +32,11 @@ export default function Clientes() {
     <CatalogoSimple
       tabla="clientes"
       titulo="Clientes"
-      descripcion="Para quién es cada pedido. Un cliente puede tener pedidos de varias fábricas."
+      descripcion="Quién pide. Sus pedidos se cubren con lo que llega de una o varias fábricas."
       singular="cliente"
       campos={CAMPOS}
       columnas={columnas}
-      extra={(r) => <PedidosDe campo="clienteId" id={r.id} />}
+      extra={(r) => <PedidosClienteDe clienteId={r.id} />}
     />
   )
 }

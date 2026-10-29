@@ -54,6 +54,13 @@ export const TABLAS = {
     persistir: true,
     mensajeError: 'No se pudieron cargar los pedidos.',
   },
+  pedidosCliente: {
+    accion: 'listPedidosCliente',
+    campo: 'pedidosCliente',
+    rev: 'pedidosCliente',
+    persistir: true,
+    mensajeError: 'No se pudieron cargar los pedidos de clientes.',
+  },
   contenedores: {
     accion: 'listContenedores',
     campo: 'contenedores',

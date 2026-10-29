@@ -1,4 +1,4 @@
-import { Container, Factory, PackageSearch, Package, Settings2, Users, UserRound } from 'lucide-react'
+import { ClipboardList, Container, Factory, PackageSearch, Package, Settings2, Users, UserRound } from 'lucide-react'
 import { useMemo, type ComponentType, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { BadgeEstadoContenedor, BadgeEstadoPedido } from '@/components/pedidos/badges'
@@ -7,8 +7,10 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import { useContenedores } from '@/hooks/useContenedores'
 import { usePedidos } from '@/hooks/usePedidos'
+import { usePedidosCliente } from '@/hooks/usePedidosCliente'
 import { formatCantidad, formatFecha, hoyIso } from '@/lib/format'
 import { cargaDePedido, totalesLineas } from '@/lib/pedidos'
+import { pendientesDeClientes } from '@/lib/pedidoCliente'
 import { ESTADO_PEDIDO_LABEL, ESTADOS_PEDIDO, ROL_LABEL, type EstadoPedido } from '@/lib/tipos'
 
 interface Modulo {
@@ -30,9 +32,9 @@ function Tarjeta({ titulo, children }: { titulo: string; children: ReactNode }) 
 export default function Inicio() {
   const { nombre, rol, esAdmin } = useAuth()
   const { data: pedidos, loading: cargandoPedidos } = usePedidos()
+  const { data: pedidosCliente, loading: cargandoClientes } = usePedidosCliente()
   const { data: contenedores, loading: cargandoContenedores } = useContenedores()
   const { nombres: nombreProveedor } = useCatalogo('proveedores')
-  const { nombres: nombreCliente } = useCatalogo('clientes')
 
   const porEstado = useMemo(() => {
     const cuenta = new Map<EstadoPedido, number>()
@@ -48,6 +50,8 @@ export default function Inicio() {
     [pedidos],
   )
 
+  const clientesEnCurso = pedidosCliente.filter((p) => p.estado === 'registrado')
+  const porPedir = pendientesDeClientes(pedidosCliente).reduce((s, x) => s + x.cantidad, 0)
   const enViaje = contenedores.filter((c) => c.estado !== 'preparando' && c.estado !== 'desembarcado')
 
   const proximasLlegadas = useMemo(
@@ -62,7 +66,8 @@ export default function Inicio() {
   const hoy = hoyIso()
 
   const modulos: Modulo[] = [
-    { to: '/pedidos', titulo: 'Pedidos', descripcion: 'Pedidos a fábrica, estados y documentos.', icono: PackageSearch },
+    { to: '/pedidos', titulo: 'Pedidos a fábrica', descripcion: 'Pedidos a fábrica, estados y documentos.', icono: PackageSearch },
+    { to: '/pedidos-cliente', titulo: 'Pedidos de clientes', descripcion: 'Lo que pide cada cliente y de dónde se cubre.', icono: ClipboardList },
     { to: '/contenedores', titulo: 'Contenedores', descripcion: 'Embarques, carga y llegadas.', icono: Container },
     { to: '/productos', titulo: 'Productos', descripcion: 'Catálogo con fotos y precios.', icono: Package },
     { to: '/clientes', titulo: 'Clientes', descripcion: 'Quién pide y todos sus pedidos.', icono: UserRound },
@@ -120,6 +125,26 @@ export default function Inicio() {
         </section>
       </div>
 
+      <section className="mb-7 rounded-lg border border-border bg-card p-5 shadow-xs">
+        <h2 className="text-sm font-semibold text-foreground">Pedidos de clientes</h2>
+        {cargandoClientes ? (
+          <Skeleton className="mt-3 h-8 w-64" />
+        ) : (
+          <div className="mt-2 flex flex-wrap items-end gap-x-10 gap-y-3">
+            <Link to="/pedidos-cliente" className="hover:opacity-80">
+              <p className="tabular text-3xl font-semibold text-foreground">{clientesEnCurso.length}</p>
+              <p className="text-xs text-muted-foreground">en curso</p>
+            </Link>
+            <Link to="/pedidos-cliente" className="hover:opacity-80">
+              <p className={`tabular text-3xl font-semibold ${porPedir > 0 ? 'text-warning' : 'text-foreground'}`}>
+                {formatCantidad(porPedir)}
+              </p>
+              <p className="text-xs text-muted-foreground">unidades por pedir a fábrica</p>
+            </Link>
+          </div>
+        )}
+      </section>
+
       <div className="mb-7 grid gap-4 lg:grid-cols-2">
         <Tarjeta titulo="Próximas llegadas">
           {cargandoContenedores ? (
@@ -156,7 +181,7 @@ export default function Inicio() {
                   <Link to={`/pedidos/${p.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm hover:opacity-80">
                     <span className="font-medium text-foreground">{p.folio}</span>
                     <span className="text-xs text-muted-foreground">
-                      {nombreProveedor.get(p.proveedorId) ?? '—'} → {nombreCliente.get(p.clienteId) ?? 'Stock'}
+                      {nombreProveedor.get(p.proveedorId) ?? '—'}
                     </span>
                     <span className="text-xs text-muted-foreground">{ESTADO_PEDIDO_LABEL[p.estado]} {formatFecha(p.fechaEstado)}</span>
                   </Link>

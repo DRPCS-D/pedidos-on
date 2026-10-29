@@ -12,7 +12,7 @@ import { TablaScroll } from '@/components/ui/tabla-scroll'
 import { useAuth } from '@/hooks/useAuth'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import { usePedidos } from '@/hooks/usePedidos'
-import { formatFecha, formatUsd, normalizar } from '@/lib/format'
+import { formatCantidad, formatFecha, formatUsd, normalizar } from '@/lib/format'
 import { cargaDePedido, totalesLineas } from '@/lib/pedidos'
 import { ESTADO_PEDIDO_LABEL, ESTADOS_PEDIDO, type EstadoPedido } from '@/lib/tipos'
 
@@ -23,12 +23,10 @@ export default function Pedidos() {
   const navigate = useNavigate()
   const { data, loading, error } = usePedidos()
   const { data: proveedores, nombres: nombreProveedor } = useCatalogo('proveedores')
-  const { data: clientes, nombres: nombreCliente } = useCatalogo('clientes')
 
   const [busqueda, setBusqueda] = useState('')
   const [estado, setEstado] = useState<FiltroEstado>('activos')
   const [proveedorId, setProveedorId] = useState('')
-  const [clienteId, setClienteId] = useState('')
   const [nuevo, setNuevo] = useState(false)
 
   const filtrados = useMemo(() => {
@@ -36,18 +34,17 @@ export default function Pedidos() {
     return data.filter((p) => {
       if (estado === 'activos' ? p.estado === 'entregado' || p.estado === 'cancelado' : estado && p.estado !== estado) return false
       if (proveedorId && p.proveedorId !== proveedorId) return false
-      if (clienteId && p.clienteId !== clienteId) return false
       if (!q) return true
-      const texto = `${p.folio} ${nombreProveedor.get(p.proveedorId) ?? ''} ${nombreCliente.get(p.clienteId) ?? ''} ${p.lineas.map((l) => l.codigo).join(' ')}`
+      const texto = `${p.folio} ${nombreProveedor.get(p.proveedorId) ?? ''} ${p.lineas.map((l) => l.codigo).join(' ')}`
       return normalizar(texto).includes(q)
     })
-  }, [data, busqueda, estado, proveedorId, clienteId, nombreProveedor, nombreCliente])
+  }, [data, busqueda, estado, proveedorId, nombreProveedor])
 
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Pedidos</h1>
+          <h1 className="text-lg font-semibold text-foreground">Pedidos a fábrica</h1>
           <p className="text-sm text-muted-foreground">Pedidos a fábricas de China y su estado.</p>
         </div>
         {puedeEditar && (
@@ -67,7 +64,7 @@ export default function Pedidos() {
               <Input
                 aria-label="Buscar"
                 className="pl-9"
-                placeholder="Folio, fábrica, cliente o código…"
+                placeholder="Folio, fábrica o código…"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
               />
@@ -89,14 +86,6 @@ export default function Pedidos() {
                 </option>
               ))}
             </Select>
-            <Select aria-label="Cliente" className="w-44" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-              <option value="">Todos los clientes</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </Select>
           </div>
         )
       )}
@@ -114,7 +103,7 @@ export default function Pedidos() {
       ) : filtrados.length === 0 ? (
         <Vacio icono={PackageSearch} titulo="Sin resultados" descripcion="Prueba con otro filtro." />
       ) : (
-        <TablaScroll total={filtrados.length} clave={`${busqueda}|${estado}|${proveedorId}|${clienteId}`}>
+        <TablaScroll total={filtrados.length} clave={`${busqueda}|${estado}|${proveedorId}`}>
           {(limite) => (
             <>
               <thead>
@@ -122,7 +111,7 @@ export default function Pedidos() {
                   <th className="px-4 py-2.5 font-medium">Folio</th>
                   <th className="px-4 py-2.5 font-medium">Fecha</th>
                   <th className="px-4 py-2.5 font-medium">Fábrica</th>
-                  <th className="px-4 py-2.5 font-medium">Cliente</th>
+                  <th className="px-4 py-2.5 font-medium">Asignado</th>
                   <th className="px-4 py-2.5 text-right font-medium">Unid.</th>
                   <th className="px-4 py-2.5 text-right font-medium">Costo</th>
                   <th className="px-4 py-2.5 font-medium">Estado</th>
@@ -149,7 +138,9 @@ export default function Pedidos() {
                       <td className="whitespace-nowrap px-4 py-2.5 font-medium text-foreground">{p.folio}</td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{formatFecha(p.fechaPedido)}</td>
                       <td className="px-4 py-2.5 text-foreground">{nombreProveedor.get(p.proveedorId) ?? '—'}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{nombreCliente.get(p.clienteId) ?? 'Stock'}</td>
+                      <td className="tabular whitespace-nowrap px-4 py-2.5 text-muted-foreground">
+                        {t.unidades > 0 ? `${formatCantidad(p.lineas.reduce((s, l) => s + l.asignado, 0))} / ${formatCantidad(t.unidades)}` : '—'}
+                      </td>
                       <td className="tabular px-4 py-2.5 text-right text-foreground">{t.unidades.toLocaleString('es-PY')}</td>
                       <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-muted-foreground">{formatUsd(t.costo)}</td>
                       <td className="px-4 py-2.5">

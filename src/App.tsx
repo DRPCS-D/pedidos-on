@@ -7,8 +7,10 @@ import Contenedores from '@/pages/Contenedores'
 import Inicio from '@/pages/Inicio'
 import Login from '@/pages/Login'
 import NoEncontrado from '@/pages/NoEncontrado'
+import PedidoClienteDetalle from '@/pages/PedidoClienteDetalle'
 import PedidoDetalle from '@/pages/PedidoDetalle'
 import Pedidos from '@/pages/Pedidos'
+import PedidosCliente from '@/pages/PedidosCliente'
 import Productos from '@/pages/Productos'
 import Proveedores from '@/pages/Proveedores'
 import Usuarios from '@/pages/Usuarios'
@@ -27,6 +29,8 @@ export default function App() {
         <Route index element={<Inicio />} />
         <Route path="pedidos" element={<Pedidos />} />
         <Route path="pedidos/:id" element={<PedidoDetalle />} />
+        <Route path="pedidos-cliente" element={<PedidosCliente />} />
+        <Route path="pedidos-cliente/:id" element={<PedidoClienteDetalle />} />
         <Route path="contenedores" element={<Contenedores />} />
         <Route path="contenedores/:id" element={<ContenedorDetalle />} />
         <Route path="productos" element={<Productos />} />

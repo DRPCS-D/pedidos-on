@@ -3,10 +3,10 @@ import { BadgeEstadoPedido } from '@/components/pedidos/badges'
 import { usePedidos } from '@/hooks/usePedidos'
 import { formatFecha } from '@/lib/format'
 
-/** Pedidos de un proveedor o de un cliente, para su ficha. */
-export function PedidosDe({ campo, id }: { campo: 'proveedorId' | 'clienteId'; id: string }) {
+/** Pedidos a fábrica de un proveedor, para su ficha. */
+export function PedidosDe({ id }: { id: string }) {
   const { data } = usePedidos()
-  const lista = data.filter((p) => p[campo] === id)
+  const lista = data.filter((p) => p.proveedorId === id)
 
   return (
     <div className="mt-5 border-t border-border pt-4">

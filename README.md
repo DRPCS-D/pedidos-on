@@ -6,7 +6,11 @@ Frontend: React 19 + Vite + Tailwind 4 (Vercel). Backend: Google Apps Script sob
 
 ## Cómo funciona
 
-- **Pedido**: una fábrica (proveedor) + un cliente (opcional: vacío = stock propio) + líneas de producto. Un cliente puede tener varios pedidos de distintas fábricas; su ficha los muestra todos.
+- **Pedido a fábrica**: una fábrica (proveedor) + líneas de producto (costo, colores, tamaños, cajas). No lleva cliente: lo que la fábrica produce se reparte después entre los clientes y lo que no se asigna a nadie es **stock propio**.
+- **Pedido de cliente**: cliente + lo que pidió (producto, color, tamaño, cantidad y **su precio de venta**, editable por cliente). Se cubre **asignándole cantidades de líneas de pedidos a fábrica de la misma variante**, en cualquiera de los dos órdenes:
+  - *Fábrica primero*: al crear el pedido de cliente se asigna lo disponible (o con «Asignar lo disponible» / «Asignar a mano» después).
+  - *Cliente primero*: al armar un pedido a fábrica, «Agregar lo pendiente de clientes» trae lo que los clientes esperan, y al guardar se asigna solo (lo que sobre queda como stock).
+  Un pedido de cliente puede abastecerse de varios pedidos a fábrica, y un pedido a fábrica puede repartirse entre varios clientes. Dónde está lo del cliente se ve en su pedido («Viene de»): sigue el estado del pedido a fábrica (menos avanzado si son varios). Sus estados propios son registrado, entregado y cancelado; cancelarlo libera lo asignado.
 - **Productos con colores y tamaños** (calzado, ropa, accesorios…): un producto es un modelo con su código, descripción, marca y precios, y lleva su lista de **colores** y de **tamaños** (tallas). Los tamaños se agrupan (Calzado 34-45, Ropa XS-XXL…) y se administran en Catálogos. Un producto sin colores ni tamaños (un accesorio) es una sola línea.
 - **Al agregar un producto a un pedido** aparece, por cada color, su **curva** (unidades de cada tamaño en una caja) y sus **cajas**; el total es unidades por caja × cajas (ej. 1·1·2·2·1 = 7 × 5 cajas = 35). Cada color y tamaño es una línea del pedido (con su curva y cajas guardadas), y cada línea se puede cargar por separado en contenedores.
 - **Precios**: costo (USD), venta (USD) y venta (Gs) son del producto y valen para todos sus colores y tamaños. Al agregarlo a un pedido los precios se **copian** a las líneas: si luego cambia el catálogo, el pedido no se altera. El precio en Gs se carga a mano; el botón «Calcular» sugiere venta USD × tipo de cambio (Catálogos).
@@ -39,15 +43,18 @@ Frontend: React 19 + Vite + Tailwind 4 (Vercel). Backend: Google Apps Script sob
 | `Productos` | id, codigo, descripcion, marcaId, proveedorId, precioCosto, precioVentaUsd, precioVentaGs, activo |
 | `ProductoColores` | id, productoId, color |
 | `ProductoTamanos` | id, productoId, tamanoId |
-| `Pedidos` | id, folio, proveedorId, clienteId, estado, fechaPedido, notas, creadoPor, fechaCreacion, fechaEstado |
+| `Pedidos` | id, folio, proveedorId, clienteId *(sin uso)*, estado, fechaPedido, notas, creadoPor, fechaCreacion, fechaEstado |
 | `PedidoLineas` | id, pedidoId, productoId, codigo, descripcion, color, marca, tamano, tamanoId, cantidad, precioCosto, precioVentaUsd, precioVentaGs, porCaja, cajas |
+| `PedidosCliente` | id, folio, clienteId, estado, fecha, notas, creadoPor, fechaCreacion, fechaEstado |
+| `PCLineas` | id, pcId, productoId, codigo, descripcion, color, marca, tamano, tamanoId, cantidad, precioVentaUsd, precioVentaGs, porCaja, cajas |
+| `Asignaciones` | id, pcLineaId, lineaId (línea del pedido a fábrica), cantidad |
 | `Contenedores` | id, numero, tipo, naviera, bl, puertoOrigen, puertoDestino, etd, eta, estado, notas, creadoPor, fechaCreacion |
 | `Cargas` | id, contenedorId, pedidoId, lineaId, cantidad |
 | `Historial` | id, entidad, entidadId, estado, fecha, usuario, nota, registrado |
 | `Archivos` | id, entidad, entidadId, driveId, nombre, mime, bytes, principal, subidoPor, fecha |
 | `Config` | clave, valor (`tipoCambio`, `carpetaDriveId`) |
 
-No edites a mano `Pedidos`, `PedidoLineas`, `Cargas` ni `Historial`: el backend los mantiene coherentes entre sí. Los catálogos y usuarios sí se pueden tocar, pero después pulsa ↻ en la app (ver «Caché»).
+No edites a mano `Pedidos`, `PedidoLineas`, `PedidosCliente`, `PCLineas`, `Asignaciones`, `Cargas` ni `Historial`: el backend los mantiene coherentes entre sí. Los catálogos y usuarios sí se pueden tocar, pero después pulsa ↻ en la app (ver «Caché»).
 
 ## Backend (Apps Script)
 
