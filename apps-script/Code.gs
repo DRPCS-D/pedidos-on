@@ -45,7 +45,7 @@ var ENCABEZADOS = {
   Pedidos: ['id', 'folio', 'proveedorId', 'clienteId', 'estado', 'fechaPedido', 'notas',
             'creadoPor', 'fechaCreacion', 'fechaEstado'],
   PedidoLineas: ['id', 'pedidoId', 'productoId', 'codigo', 'descripcion', 'color', 'marca', 'tamano', 'tamanoId',
-                 'cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs'],
+                 'cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'porCaja', 'cajas'],
   Contenedores: ['id', 'numero', 'tipo', 'naviera', 'bl', 'puertoOrigen', 'puertoDestino', 'etd', 'eta',
                  'estado', 'notas', 'creadoPor', 'fechaCreacion'],
   Cargas: ['id', 'contenedorId', 'pedidoId', 'lineaId', 'cantidad'],
@@ -55,7 +55,7 @@ var ENCABEZADOS = {
 };
 
 /** Columnas numéricas y de casilla: el resto se guarda como texto (formato @). */
-var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes', 'orden'];
+var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes', 'orden', 'porCaja', 'cajas'];
 var CASILLAS = ['activo', 'principal'];
 /** Columnas con fecha sin hora ('yyyy-MM-dd'); las demás fechas son ISO con hora. */
 var FECHAS_DIA = ['fechaPedido', 'fechaEstado', 'etd', 'eta'];
@@ -662,6 +662,11 @@ function guardarLineas_(pedidoId, lineasIn) {
 
   lineasIn.forEach(function (li) {
     var cantidad = numero_(li.cantidad, 'La cantidad');
+    // Con curva: unidades por caja de este tamaño × cajas de este color; la cantidad sale de ahí.
+    var porCaja = numero_(li.porCaja, 'Las unidades por caja');
+    var cajas = numero_(li.cajas, 'Las cajas');
+    if (porCaja > 0 && cajas > 0) cantidad = Math.round(porCaja * cajas * 1000) / 1000;
+    else { porCaja = 0; cajas = 0; }
     if (!(cantidad > 0)) throw new Error('Cada línea debe tener una cantidad mayor que cero.');
     var precios = {
       precioCosto: numero_(li.precioCosto, 'El precio de costo'),
@@ -678,6 +683,8 @@ function guardarLineas_(pedidoId, lineasIn) {
         throw new Error(actual.codigo + ' ' + actual.color + ' ' + actual.tamano + ': ya tiene ' + cargado[lid] + ' cargados en contenedores.');
       }
       actual.cantidad = cantidad;
+      actual.porCaja = porCaja;
+      actual.cajas = cajas;
       Object.keys(precios).forEach(function (k) { actual[k] = precios[k]; });
       escribir_('PedidoLineas', actual);
       return;
@@ -704,7 +711,8 @@ function guardarLineas_(pedidoId, lineasIn) {
     var nueva = {
       id: nuevoId_(), pedidoId: pedidoId, productoId: prod.id, codigo: prod.codigo,
       descripcion: prod.descripcion, color: color, marca: marcas[prod.marcaId] || '',
-      tamano: tamanos[tamanoId] || '', tamanoId: tamanoId, cantidad: cantidad
+      tamano: tamanos[tamanoId] || '', tamanoId: tamanoId, cantidad: cantidad,
+      porCaja: porCaja, cajas: cajas
     };
     Object.keys(precios).forEach(function (k) { nueva[k] = precios[k]; });
     agregar_('PedidoLineas', nueva);

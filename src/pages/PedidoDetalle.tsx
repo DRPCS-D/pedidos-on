@@ -156,6 +156,8 @@ export default function PedidoDetalle() {
                 <th className="px-4 py-2.5 font-medium">Color</th>
                 <th className="px-4 py-2.5 font-medium">Marca</th>
                 <th className="px-4 py-2.5 font-medium">Tamaño</th>
+                <th className="px-4 py-2.5 text-right font-medium">Por caja</th>
+                <th className="px-4 py-2.5 text-right font-medium">Cajas</th>
                 <th className="px-4 py-2.5 text-right font-medium">Cant.</th>
                 <th className="px-4 py-2.5 text-right font-medium">Cargado</th>
                 <th className="px-4 py-2.5 text-right font-medium">Costo</th>
@@ -171,6 +173,8 @@ export default function PedidoDetalle() {
                   <td className="px-4 py-2.5 text-muted-foreground">{l.color || '—'}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{l.marca || '—'}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{l.tamano || '—'}</td>
+                  <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{l.cajas > 0 ? formatCantidad(l.porCaja) : '—'}</td>
+                  <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{l.cajas > 0 ? formatCantidad(l.cajas) : '—'}</td>
                   <td className="tabular px-4 py-2.5 text-right text-foreground">{formatCantidad(l.cantidad)}</td>
                   <td
                     className={`tabular px-4 py-2.5 text-right ${l.cargado >= l.cantidad ? 'text-success' : l.cargado > 0 ? 'text-warning' : 'text-muted-foreground'}`}
@@ -188,6 +192,8 @@ export default function PedidoDetalle() {
                 <td className="px-4 py-2.5" colSpan={5}>
                   Total
                 </td>
+                <td></td>
+                <td></td>
                 <td className="tabular px-4 py-2.5 text-right">{formatCantidad(t.unidades)}</td>
                 <td></td>
                 <td className="tabular whitespace-nowrap px-4 py-2.5 text-right">{formatUsd(t.costo)}</td>

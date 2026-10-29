@@ -164,6 +164,9 @@ export interface LineaPedido {
   tamano: string
   tamanoId: string
   cantidad: number
+  /** Unidades de este tamaño en una caja (curva) y cajas del color; 0 si se cargó solo la cantidad. */
+  porCaja: number
+  cajas: number
   precioCosto: number
   precioVentaUsd: number
   precioVentaGs: number

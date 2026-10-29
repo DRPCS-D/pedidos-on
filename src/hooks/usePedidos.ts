@@ -12,6 +12,9 @@ export interface DatosLinea {
   color: string
   tamanoId: string
   cantidad: number
+  /** Curva: unidades de este tamaño por caja, y cajas del color (0 = solo cantidad). */
+  porCaja: number
+  cajas: number
   precioCosto: number
   precioVentaUsd: number
   precioVentaGs: number

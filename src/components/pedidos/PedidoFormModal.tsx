@@ -111,10 +111,11 @@ export function PedidoFormModal({
         g.cantidades[k] = String(l.cantidad)
         g.ids[k] = l.id
         g.cargados[k] = l.cargado
-        // Lo guardado son cantidades por tamaño: se muestran como la curva de 1 caja.
+        // Con curva guardada se recuperan unidades por caja y cajas; si no, la cantidad se muestra como 1 caja.
         const color = k.split('|')[0]
-        g.curva[color] = { ...g.curva[color], [l.tamanoId]: String(l.cantidad) }
-        g.cajas[color] = '1'
+        const conCurva = l.porCaja > 0 && l.cajas > 0
+        g.curva[color] = { ...g.curva[color], [l.tamanoId]: String(conCurva ? l.porCaja : l.cantidad) }
+        g.cajas[color] = String(conCurva ? l.cajas : 1)
       }
       return g
     })
@@ -227,12 +228,16 @@ export function PedidoFormModal({
           if (cantidad < (g.cargados[k] ?? 0)) return setError(`${etiqueta}: ya hay ${g.cargados[k]} cargados en contenedores.`)
           if (cantidad === 0) continue
           conCantidad++
+          const conTamanos = t.id !== ''
           lineas.push({
             id: g.ids[k] ?? '',
             productoId: g.productoId,
             color,
             tamanoId: t.id,
             cantidad,
+            // Curva y cajas se guardan para poder mostrar «5 cajas de esta curva».
+            porCaja: conTamanos ? num(g.curva[color]?.[t.id] ?? '') : 0,
+            cajas: conTamanos ? num(g.cajas[color] ?? '') : 0,
             precioCosto: num(g.precioCosto),
             precioVentaUsd: num(g.precioVentaUsd),
             precioVentaGs: num(g.precioVentaGs),
