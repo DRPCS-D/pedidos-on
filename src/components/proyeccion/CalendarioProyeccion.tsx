@@ -16,6 +16,13 @@ export const ETIQUETA_DIA: Record<TipoDia, string> = {
   transito: 'Transporte marítimo',
 }
 
+/** Cada año tiene su color (los años impares uno y los pares otro) para distinguirlos de un vistazo al pasar de diciembre a enero. */
+const COLOR_ANIO = {
+  impar: { tarjeta: 'border-violet-500/50 bg-violet-500/5', titulo: 'text-violet-700 dark:text-violet-300', chip: 'bg-violet-500/20 text-violet-700 dark:text-violet-300' },
+  par: { tarjeta: 'border-orange-500/50 bg-orange-500/5', titulo: 'text-orange-700 dark:text-orange-300', chip: 'bg-orange-500/20 text-orange-700 dark:text-orange-300' },
+} as const
+const colorDe = (anio: number) => (anio % 2 === 0 ? COLOR_ANIO.par : COLOR_ANIO.impar)
+
 const dosDigitos = (n: number) => String(n).padStart(2, '0')
 
 function Mes({ anio, mes, p }: { anio: number; mes: number; p: Proyeccion }) {
@@ -27,9 +34,9 @@ function Mes({ anio, mes, p }: { anio: number; mes: number; p: Proyeccion }) {
   const llegada = aDia(p.llegada)
 
   return (
-    <section className="rounded-lg border border-border bg-card p-3 shadow-xs print:break-inside-avoid">
+    <section className={cn('rounded-lg border p-3 shadow-xs print:break-inside-avoid', colorDe(anio).tarjeta)}>
       <h3 className="mb-2 text-sm font-semibold text-foreground">
-        {MESES[mes]} <span className="font-normal text-muted-foreground">{anio}</span>
+        {MESES[mes]} <span className={cn('font-medium', colorDe(anio).titulo)}>{anio}</span>
       </h3>
       <div className="grid grid-cols-7 gap-1 text-center">
         {SEMANA.map((d, i) => (
@@ -69,9 +76,18 @@ function Mes({ anio, mes, p }: { anio: number; mes: number; p: Proyeccion }) {
 
 /** Calendario mensual en grilla: cada día pintado según sea fabricación, pausa o transporte, con el inicio, el fin de la fabricación y la llegada marcados. */
 export function CalendarioProyeccion({ proyeccion }: { proyeccion: Proyeccion }) {
+  const meses = mesesDe(proyeccion)
+  const anios = [...new Set(meses.map((m) => m.anio))]
   return (
     <div>
-      <div className="mb-3 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
+      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          {anios.map((a) => (
+            <span key={a} className={cn('rounded-full px-2 py-0.5 font-medium', colorDe(a).chip)}>
+              {a}
+            </span>
+          ))}
+        </span>
         <span className="flex items-center gap-1.5">
           <span className="size-3 rounded-sm bg-blue-500/30" /> Fabricación
         </span>
@@ -92,7 +108,7 @@ export function CalendarioProyeccion({ proyeccion }: { proyeccion: Proyeccion })
         </span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {mesesDe(proyeccion).map((m) => (
+        {meses.map((m) => (
           <Mes key={`${m.anio}-${m.mes}`} anio={m.anio} mes={m.mes} p={proyeccion} />
         ))}
       </div>

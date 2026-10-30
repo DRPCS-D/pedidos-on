@@ -38,6 +38,8 @@ export function ProyeccionFormModal({
   const [notas, setNotas] = useState('')
   const [modo, setModo] = useState<Modo>('inicio')
   const [fecha, setFecha] = useState('')
+  const [fab, setFab] = useState('')
+  const [tra, setTra] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const id = proyeccion && proyeccion !== 'nueva' ? proyeccion.id : null
@@ -49,17 +51,21 @@ export function ProyeccionFormModal({
     setNotas(g?.notas ?? '')
     setModo(g?.modo ?? 'inicio')
     setFecha(g?.fechaBase ?? '')
+    setFab(g?.diasFabricacion ?? '')
+    setTra(g?.diasTransito ?? '')
     setError(null)
     // Solo al abrir: una sincronización de fondo no debe borrar lo que se escribe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proyeccion === null, id])
 
   const guardada = proyeccion && proyeccion !== 'nueva' ? proyeccion : null
-  const diasFab = guardada ? Number(guardada.diasFabricacion) : plazos.diasFabricacion
-  const diasTra = guardada ? Number(guardada.diasTransito) : plazos.diasTransito
+  // Al editar se ajustan los plazos de esta proyección; una nueva parte de los de la configuración.
+  const diasFab = guardada ? Number(fab) : plazos.diasFabricacion
+  const diasTra = guardada ? Number(tra) : plazos.diasTransito
   const pausas = guardada ? pausasDe(guardada.pausas) : plazos.pausas
 
-  const proy = fecha
+  const plazosValidos = !guardada || (diasFab >= 1 && tra !== '')
+  const proy = fecha && plazosValidos
     ? modo === 'inicio'
       ? proyectar(fecha, diasFab, diasTra, pausas)
       : proyectarInverso(fecha, diasFab, diasTra, pausas)
@@ -70,6 +76,8 @@ export function ProyeccionFormModal({
   async function onGuardar() {
     if (!nombre.trim()) return setError('Ponle un nombre (por ejemplo «Cliente X, calzado»).')
     if (!fecha) return setError(modo === 'inicio' ? 'Indica la fecha de inicio.' : 'Indica la fecha final.')
+    if (guardada && !(diasFab >= 1)) return setError('Indica los días de fabricación (al menos 1).')
+    if (guardada && tra === '') return setError('Indica los días de transporte.')
     if (!proy) return setError('La fecha no es válida.')
     setGuardando(true)
     setError(null)
@@ -154,8 +162,19 @@ export function ProyeccionFormModal({
           <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
         </Field>
 
+        {guardada && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Días de fabricación" hint="Sin contar las pausas. Solo cambia esta proyección.">
+              <Input inputMode="numeric" value={fab} onChange={(e) => setFab(e.target.value.replace(/\D/g, ''))} />
+            </Field>
+            <Field label="Días de transporte" hint="No lo frenan las pausas.">
+              <Input inputMode="numeric" value={tra} onChange={(e) => setTra(e.target.value.replace(/\D/g, ''))} />
+            </Field>
+          </div>
+        )}
+
         <p className="text-xs text-muted-foreground">
-          Se usan {diasFab} días de fabricación (sin contar las pausas) y {diasTra} de transporte.
+          {!guardada && `Se usan ${diasFab} días de fabricación (sin contar las pausas) y ${diasTra} de transporte; se pueden ajustar al editarla. `}
           {pausas.length > 0
             ? ` Pausas: ${pausas.map((p) => `${p.anio} (${formatFecha(p.desde)} al ${formatFecha(p.hasta)})`).join(', ')}.`
             : ' No hay pausas cargadas.'}
@@ -210,7 +229,7 @@ export function ProyeccionFormModal({
 
         {sinPausa.length > 0 && (
           <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
-            Falta cargar la pausa de la fábrica de {sinPausa.join(' y ')}. Sin ella el cálculo no la descuenta. Un admin la agrega en Catálogos.
+            Falta cargar la pausa de la fábrica de {sinPausa.join(' y ')}. Sin ella el cálculo no la descuenta. Un admin la agrega en Configuración.
           </p>
         )}
 

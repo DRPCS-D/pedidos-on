@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import AppLayout from '@/components/layout/AppLayout'
 import Catalogos from '@/pages/Catalogos'
 import Clientes from '@/pages/Clientes'
+import Configuracion from '@/pages/Configuracion'
 import ContenedorDetalle from '@/pages/ContenedorDetalle'
 import Contenedores from '@/pages/Contenedores'
 import Inicio from '@/pages/Inicio'
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="clientes" element={<Clientes />} />
         <Route path="proveedores" element={<Proveedores />} />
         <Route path="catalogos" element={<Catalogos />} />
+        <Route path="configuracion" element={<Configuracion />} />
         <Route path="usuarios" element={<Usuarios />} />
       </Route>
 

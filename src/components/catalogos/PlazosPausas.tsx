@@ -77,42 +77,66 @@ export function PlazosPausas() {
         </Field>
       </div>
 
-      <div className="mt-4 max-w-xl space-y-2">
+      <div className="mt-4 max-w-2xl">
         <p className="text-xs font-medium text-muted-foreground">Pausa de cada año</p>
-        <p className="text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-muted-foreground">
           La fecha del Año Nuevo Chino cambia cada año, así que cada año tiene su propia pausa. Si un año no tiene pausa cargada, la
           proyección no la descuenta y lo avisa.
         </p>
-        {pausas.length === 0 && <p className="text-xs text-muted-foreground">No hay pausas cargadas.</p>}
-        {pausas.map((p, i) => (
-          <div key={i} className="flex items-end gap-2">
-            <Field label={i === 0 ? 'Año' : ''} className="w-24">
-              <Input
-                inputMode="numeric"
-                maxLength={4}
-                aria-label="Año"
-                value={p.anio}
-                disabled={!esAdmin}
-                onChange={(e) => cambiar(i, { anio: e.target.value.replace(/\D/g, '') })}
-              />
-            </Field>
-            <Field label={i === 0 ? 'Desde' : ''} className="flex-1">
-              <Input type="date" aria-label="Desde" value={p.desde} disabled={!esAdmin} onChange={(e) => cambiar(i, { desde: e.target.value })} />
-            </Field>
-            <Field label={i === 0 ? 'Hasta (incluido)' : ''} className="flex-1">
-              <Input type="date" aria-label="Hasta" value={p.hasta} disabled={!esAdmin} onChange={(e) => cambiar(i, { hasta: e.target.value })} />
-            </Field>
-            {esAdmin && (
-              <Button variant="ghost" size="icon" className="size-9" aria-label={`Quitar la pausa de ${p.anio}`} onClick={() => setPausas((ps) => ps.filter((_, k) => k !== i))}>
-                <X />
-              </Button>
-            )}
-          </div>
-        ))}
+        <div className="mt-2 overflow-x-auto rounded-md border border-border">
+          <table className="w-full text-sm">
+            <thead className="border-b border-border text-left text-xs text-muted-foreground">
+              <tr>
+                <th className="w-28 px-3 py-2 font-medium">Año</th>
+                <th className="px-3 py-2 font-medium">Desde</th>
+                <th className="px-3 py-2 font-medium">Hasta (incluido)</th>
+                {esAdmin && <th className="w-12 px-3 py-2" />}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {pausas.length === 0 && (
+                <tr>
+                  <td colSpan={esAdmin ? 4 : 3} className="px-3 py-3 text-xs text-muted-foreground">
+                    No hay pausas cargadas.
+                  </td>
+                </tr>
+              )}
+              {pausas.map((p, i) => (
+                <tr key={i}>
+                  <td className="px-3 py-2">
+                    <Input
+                      inputMode="numeric"
+                      maxLength={4}
+                      aria-label="Año"
+                      className="h-8"
+                      value={p.anio}
+                      disabled={!esAdmin}
+                      onChange={(e) => cambiar(i, { anio: e.target.value.replace(/\D/g, '') })}
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <Input type="date" aria-label="Desde" className="h-8" value={p.desde} disabled={!esAdmin} onChange={(e) => cambiar(i, { desde: e.target.value })} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <Input type="date" aria-label="Hasta" className="h-8" value={p.hasta} disabled={!esAdmin} onChange={(e) => cambiar(i, { hasta: e.target.value })} />
+                  </td>
+                  {esAdmin && (
+                    <td className="px-3 py-2 text-right">
+                      <Button variant="ghost" size="icon" className="size-8" aria-label={`Quitar la pausa de ${p.anio}`} onClick={() => setPausas((ps) => ps.filter((_, k) => k !== i))}>
+                        <X />
+                      </Button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {esAdmin && pausas.length < 40 && (
           <Button
             variant="outline"
             size="sm"
+            className="mt-2"
             onClick={() =>
               setPausas((ps) => {
                 const ultimo = Math.max(0, ...ps.map((p) => Number(p.anio) || 0))

@@ -1900,12 +1900,12 @@ function instalar() {
   var cfg = leerConfig_();
   if (!cfg.tipoCambio) {
     guardarConfig_('tipoCambio', '7500');
-    mensaje += 'Tipo de cambio inicial: 7500 Gs/USD (cámbialo en Catálogos). ';
+    mensaje += 'Tipo de cambio inicial: 7500 Gs/USD (cámbialo en Catálogos > Precio). ';
   }
   if (!cfg.pausas) {
-    // Año Nuevo Chino: la fábrica para unos dos meses. Se ajusta cada año en Catálogos.
+    // Año Nuevo Chino: la fábrica para unos dos meses. Se ajusta cada año en Configuración.
     guardarConfig_('pausas', JSON.stringify([{ anio: 2027, desde: '2027-01-01', hasta: '2027-02-28' }]));
-    mensaje += 'Pausa de fábrica inicial: 01/01/2027 al 28/02/2027 (ajústala en Catálogos). ';
+    mensaje += 'Pausa de fábrica inicial: 01/01/2027 al 28/02/2027 (ajústala en Configuración). ';
   }
   var carpetaOk = false;
   if (cfg.carpetaDriveId) {

@@ -241,39 +241,50 @@ export function TablasPrecio() {
       {data.length === 0 ? (
         <p className="mt-4 text-xs text-muted-foreground">{loading ? 'Cargando…' : 'Todavía no hay tablas de precio.'}</p>
       ) : (
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {data.map((t) => {
-            const pasos = pasosDe(t)
-            const r = calcularPrecio(10, pasos)
-            return (
-              <article key={t.id} className={`rounded-md border border-border p-4 ${t.activo ? '' : 'opacity-60'}`}>
-                <header className="flex items-start justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-foreground">
-                    {t.nombre}
-                    {!t.activo && <span className="ml-2 text-xs font-normal text-muted-foreground">inactiva</span>}
-                  </h3>
-                  {esAdmin && (
-                    <span className="flex">
-                      <Button variant="ghost" size="icon" className="size-7" aria-label={`Editar ${t.nombre}`} onClick={() => setEditando(t)}>
-                        <Pencil />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="size-7" aria-label={`Borrar ${t.nombre}`} onClick={() => setBorrando(t)}>
-                        <Trash2 className="text-destructive" />
-                      </Button>
-                    </span>
-                  )}
-                </header>
-                <ol className="mt-2 space-y-0.5 text-xs text-muted-foreground">
-                  {pasos.map((p, i) => (
-                    <li key={i}>
-                      {i + 1}. {p.etiqueta}: {textoPaso(p)}
-                    </li>
-                  ))}
-                </ol>
-                <p className="tabular mt-2 text-xs text-foreground">Costo {formatUsd(10)} → venta {formatUsd(r.total)}</p>
-              </article>
-            )
-          })}
+        <div className="mt-4 overflow-x-auto rounded-md border border-border">
+          <table className="w-full text-sm">
+            <thead className="border-b border-border text-left text-xs text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">Nombre</th>
+                <th className="px-4 py-2 font-medium">Pasos del cálculo</th>
+                <th className="px-4 py-2 text-right font-medium">Ejemplo</th>
+                <th className="px-4 py-2 font-medium">Estado</th>
+                {esAdmin && <th className="px-4 py-2" />}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {data.map((t) => {
+                const pasos = pasosDe(t)
+                const r = calcularPrecio(10, pasos)
+                return (
+                  <tr key={t.id} className={t.activo ? '' : 'opacity-60'}>
+                    <td className="px-4 py-2.5 font-medium text-foreground">{t.nombre}</td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                      {pasos.map((p, i) => (
+                        <div key={i}>
+                          {i + 1}. {p.etiqueta}: {textoPaso(p)}
+                        </div>
+                      ))}
+                    </td>
+                    <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-xs text-foreground">
+                      {formatUsd(10)} → {formatUsd(r.total)}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">{t.activo ? 'Activa' : 'Inactiva'}</td>
+                    {esAdmin && (
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                        <Button variant="ghost" size="icon" className="size-7" aria-label={`Editar ${t.nombre}`} onClick={() => setEditando(t)}>
+                          <Pencil />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="size-7" aria-label={`Borrar ${t.nombre}`} onClick={() => setBorrando(t)}>
+                          <Trash2 className="text-destructive" />
+                        </Button>
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
       {!esAdmin && <p className="mt-3 text-xs text-muted-foreground">Solo un admin puede crear o cambiar las tablas.</p>}

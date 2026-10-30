@@ -24,6 +24,7 @@ const NAV_MAS = [
   { to: '/catalogos', label: 'Catálogos' },
 ]
 const NAV_USUARIOS = { to: '/usuarios', label: 'Usuarios' }
+const NAV_CONFIGURACION = { to: '/configuracion', label: 'Configuración' }
 
 /** Menú desplegable con las secciones que se usan menos. */
 function MenuMas({ items }: { items: { to: string; label: string }[] }) {
@@ -101,7 +102,7 @@ export default function AppLayout() {
   const [modalPassword, setModalPassword] = useState(false)
   const { forzando, forzar } = useForzarActualizacion()
 
-  const MAS = esAdmin ? [...NAV_MAS, NAV_USUARIOS] : NAV_MAS
+  const MAS = esAdmin ? [...NAV_MAS, NAV_USUARIOS, NAV_CONFIGURACION] : [...NAV_MAS, NAV_CONFIGURACION]
 
   useEffect(() => {
     if (!usuario) navigate('/login', { replace: true })

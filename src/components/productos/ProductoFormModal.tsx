@@ -360,7 +360,7 @@ export function ProductoFormModal({
           </Field>
           <Field
             label="Venta (Gs)"
-            hint={tipoCambio ? `Cotización: ${formatGs(tipoCambio)} por USD` : 'Define el tipo de cambio en Catálogos.'}
+            hint={tipoCambio ? `Cotización: ${formatGs(tipoCambio)} por USD` : 'Define el tipo de cambio en Catálogos > Precio.'}
           >
             <div className="flex gap-2">
               <Input inputMode="numeric" value={f.precioVentaGs} onChange={(e) => set('precioVentaGs', e.target.value)} />

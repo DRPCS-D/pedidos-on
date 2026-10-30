@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import { formatFecha, hoyIso } from '@/lib/format'
-import { pausasDe, proyectar } from '@/lib/proyeccion'
+import { pausasDe, proyectar, proyectarInverso } from '@/lib/proyeccion'
 import type { ProyeccionGuardada } from '@/lib/tipos'
 
 function Dato({ etiqueta, valor, nota, resaltar }: { etiqueta: string; valor: string; nota?: string; resaltar?: boolean }) {
@@ -25,12 +25,16 @@ function Dato({ etiqueta, valor, nota, resaltar }: { etiqueta: string; valor: st
   )
 }
 
+/** Datos y calendario de una proyección, calculados desde la fecha que se indicó al crearla y los plazos guardados. */
 function Cuerpo({ g }: { g: ProyeccionGuardada }) {
   const pausas = pausasDe(g.pausas)
-  const proy = proyectar(g.inicio, Number(g.diasFabricacion), Number(g.diasTransito), pausas)
+  const esFinal = g.modo === 'final'
+  const diasFab = Number(g.diasFabricacion)
+  const diasTra = Number(g.diasTransito)
+  // Desde la fecha que se indicó al crearla: el inicio o la llegada deseada (de la que sale la fecha límite).
+  const proy = esFinal ? proyectarInverso(g.fechaBase, diasFab, diasTra, pausas) : proyectar(g.fechaBase, diasFab, diasTra, pausas)
   if (!proy) return <ErrorBox mensaje="No se pudo calcular esta proyección con los datos guardados." />
   const meses = proy.diasTotal / 30.4
-  const esFinal = g.modo === 'final'
 
   return (
     <>

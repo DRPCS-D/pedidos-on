@@ -152,7 +152,7 @@ export function DescargarDocumento({
             <label className="flex cursor-pointer items-center gap-2 text-foreground">
               <input type="checkbox" className="size-4 accent-primary" checked={condiciones} onChange={(e) => setCondiciones(e.target.checked)} />
               Incluir condiciones
-              {!encabezado.condiciones.trim() && <span className="text-xs text-muted-foreground">(sin definir en Catálogos)</span>}
+              {!encabezado.condiciones.trim() && <span className="text-xs text-muted-foreground">(sin definir en Configuración)</span>}
             </label>
           )}
         </div>
