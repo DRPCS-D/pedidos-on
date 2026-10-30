@@ -77,7 +77,7 @@ export function PedidoClienteFormModal({
     setClienteId(pedido?.clienteId ?? clienteInicial ?? '')
     setFecha(pedido?.fecha || hoyIso())
     setNotas(pedido?.notas ?? '')
-    setGrupos(pedido ? deLineas(pedido.lineas.map((l) => ({ ...l, marca: l.marca, comprometido: l.asignado }))) : [])
+    setGrupos(pedido ? deLineas(pedido.lineas.map((l) => ({ ...l, marca: l.marca, comprometido: 0 }))) : [])
     setAsignar(true)
     setError(null)
     // Solo al abrir o cambiar de pedido: una sincronización de fondo no debe borrar lo que se escribe.
@@ -183,25 +183,23 @@ export function PedidoClienteFormModal({
           </Field>
         </div>
 
-        {!pedido && (
-          <div className="flex flex-wrap items-end gap-2 rounded-md border border-primary/30 bg-accent/60 px-3 py-2.5">
-            <Field label="Traer un pedido a fábrica completo" className="min-w-64 flex-1">
-              <Select value={pedidoFabricaId} onChange={(e) => setPedidoFabricaId(e.target.value)}>
-                <option value="">Elegir pedido…</option>
-                {pedidosFabrica
-                  .filter((x) => x.estado !== 'cancelado' && x.lineas.some((l) => l.cantidad > l.asignado))
-                  .map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.folio} · {nombreProveedor.get(x.proveedorId) ?? '—'}
-                    </option>
-                  ))}
-              </Select>
-            </Field>
-            <Button variant="outline" onClick={traerPedidoFabrica} disabled={!pedidoFabricaId}>
-              Traer productos
-            </Button>
-          </div>
-        )}
+        <div className="flex flex-wrap items-end gap-2 rounded-md border border-primary/30 bg-accent/60 px-3 py-2.5">
+          <Field label="Traer un pedido a fábrica completo" className="min-w-64 flex-1">
+            <Select value={pedidoFabricaId} onChange={(e) => setPedidoFabricaId(e.target.value)}>
+              <option value="">Elegir pedido…</option>
+              {pedidosFabrica
+                .filter((x) => x.estado !== 'cancelado' && x.lineas.some((l) => l.cantidad > l.asignado))
+                .map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.folio} · {nombreProveedor.get(x.proveedorId) ?? '—'}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+          <Button variant="outline" onClick={traerPedidoFabrica} disabled={!pedidoFabricaId}>
+            Traer productos
+          </Button>
+        </div>
 
         <EditorProductos
           grupos={grupos}
@@ -210,20 +208,18 @@ export function PedidoClienteFormModal({
           textoComprometido="asignados desde pedidos a fábrica"
         />
 
-        {!pedido && (
-          <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-4 accent-primary"
-              checked={asignar}
-              onChange={(e) => setAsignar(e.target.checked)}
-            />
-            <span>
-              Al guardar, cubrir con lo que ya esté disponible en pedidos a fábrica (lo que falte quedará pendiente de pedir a la
-              fábrica).
-            </span>
-          </label>
-        )}
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-primary"
+            checked={asignar}
+            onChange={(e) => setAsignar(e.target.checked)}
+          />
+          <span>
+            Al guardar, cubrir con lo que ya esté disponible en pedidos a fábrica (lo que falte quedará pendiente de pedir a la
+            fábrica).{pedido && ' Lo que quites o bajes de lo ya asignado vuelve a ser stock del pedido a fábrica.'}
+          </span>
+        </label>
 
         {error && <ErrorBox mensaje={error} />}
       </div>

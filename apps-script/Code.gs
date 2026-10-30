@@ -664,12 +664,38 @@ function guardarLineas_(pedidoId, lineasIn) {
   }, lineasIn);
 }
 
-/** Líneas de un pedido de cliente: no se pueden bajar de lo ya asignado desde pedidos a fábrica. */
+/**
+ * Líneas de un pedido de cliente. Si se baja o se quita algo ya asignado desde pedidos a
+ * fábrica, esa parte se libera y vuelve a ser stock del pedido a fábrica.
+ */
 function guardarLineasCliente_(pcId, lineasIn) {
   guardarLineasDe_({
     hoja: 'PCLineas', dueno: 'pcId', duenoId: pcId, conCosto: false,
-    comprometidos: [{ mapa: asignadoPorPcLinea_(), texto: 'asignados desde pedidos a fábrica' }]
+    comprometidos: [],
+    liberar: liberarAsignacionesPc_
   }, lineasIn);
+}
+
+/** Deja asignadas a una línea de pedido de cliente como máximo `maximo` unidades (libera las últimas). */
+function liberarAsignacionesPc_(pcLineaId, maximo) {
+  var filas = leer_('Asignaciones').filas.filter(function (a) { return a.pcLineaId === pcLineaId; })
+    .sort(function (a, b) { return b._fila - a._fila; });
+  var exceso = filas.reduce(function (t, a) { return t + Number(a.cantidad || 0); }, 0) - maximo;
+  var borrar = [];
+  filas.forEach(function (a) {
+    if (exceso <= 0) return;
+    var n = Number(a.cantidad || 0);
+    if (n <= exceso) {
+      borrar.push(a);
+      exceso -= n;
+    } else {
+      a.cantidad = n - exceso;
+      escribir_('Asignaciones', a);
+      exceso = 0;
+    }
+  });
+  var sheet = hoja_('Asignaciones');
+  borrar.sort(function (a, b) { return b._fila - a._fila; }).forEach(function (a) { borrarFila_(sheet, a._fila); });
 }
 
 /**
@@ -696,6 +722,11 @@ function guardarLineasDe_(cfg, lineasIn) {
     variantes[clave] = true;
   };
   var verificar = function (l, cantidad, quitando) {
+    // Si el pedido sabe liberar lo comprometido (los de cliente), se libera en vez de rechazar.
+    if (cfg.liberar) {
+      cfg.liberar(l.id, quitando ? 0 : cantidad);
+      return;
+    }
     cfg.comprometidos.forEach(function (c) {
       var n = c.mapa[l.id] || 0;
       var etiqueta = [l.codigo, l.color, l.tamano].filter(String).join(' ');
@@ -907,7 +938,7 @@ function handleGuardarPedidoCliente_(body) {
   if (!lineasIn.length) throw new Error('El pedido debe tener al menos un producto con cantidad.');
   var id = String(body.id || '').trim();
 
-  var resultado = conLock_(['pedidosCliente', 'historial'], function () {
+  var resultado = conLock_(['pedidosCliente', 'historial', 'pedidos'], function () {
     var tP = leer_('PedidosCliente');
     var pc;
     if (id) {
@@ -933,7 +964,6 @@ function handleGuardarPedidoCliente_(body) {
     if (body.asignar === true) asignado = asignarDisponible_([pc.id]);
     return { id: pc.id, folio: pc.folio, asignado: asignado };
   });
-  if (resultado.asignado) bumpRevisionTras_(['pedidos']);
   return jsonOut_({ ok: true, id: resultado.id, folio: resultado.folio, asignado: resultado.asignado });
 }
 
