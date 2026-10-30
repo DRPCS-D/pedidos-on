@@ -39,6 +39,7 @@ export function CatalogoSimple({
   titulo,
   descripcion,
   singular,
+  femenino = false,
   campos,
   columnas,
   extra,
@@ -49,6 +50,8 @@ export function CatalogoSimple({
   descripcion: string
   /** 'proveedor', 'cliente'… en minúscula, para los mensajes. */
   singular: string
+  /** Para los títulos: «Nueva marca» y no «Nuevo marca». */
+  femenino?: boolean
   campos: CampoCatalogo[]
   columnas: ColumnaCatalogo[]
   extra?: (r: Registro) => ReactNode
@@ -165,6 +168,7 @@ export function CatalogoSimple({
         abierto={modal !== null}
         registro={modal === 'nuevo' ? null : modal}
         singular={singular}
+        femenino={femenino}
         campos={campos}
         puedeEditar={puedeEditar}
         extra={extra}
@@ -213,6 +217,7 @@ function FormCatalogo({
   abierto,
   registro,
   singular,
+  femenino,
   campos,
   puedeEditar,
   extra,
@@ -225,6 +230,7 @@ function FormCatalogo({
   /** null = crear */
   registro: Registro | null
   singular: string
+  femenino: boolean
   campos: CampoCatalogo[]
   puedeEditar: boolean
   extra?: (r: Registro) => ReactNode
@@ -264,7 +270,7 @@ function FormCatalogo({
   return (
     <Modal
       abierto={abierto}
-      titulo={registro ? `Editar ${singular}` : `Nuevo ${singular}`}
+      titulo={registro ? `Editar ${singular}` : `${femenino ? 'Nueva' : 'Nuevo'} ${singular}`}
       onCerrar={onCerrar}
       footer={
         puedeEditar ? (

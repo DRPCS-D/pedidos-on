@@ -101,7 +101,7 @@ var CATALOGOS = {
     usadoEn: [{ hoja: 'Pedidos', col: 'clienteId' }]
   },
   marcas: {
-    hoja: 'Marcas', etiqueta: 'marca',
+    hoja: 'Marcas', etiqueta: 'marca', femenino: true,
     campos: { nombre: 60 },
     usadoEn: [{ hoja: 'Productos', col: 'marcaId' }]
   },
@@ -112,7 +112,7 @@ var CATALOGOS = {
   },
   // Fórmulas para calcular el precio de venta en USD a partir del costo; solo las edita el admin.
   tablasPrecio: {
-    hoja: 'TablasPrecio', etiqueta: 'tabla de precios',
+    hoja: 'TablasPrecio', etiqueta: 'tabla de precios', femenino: true,
     campos: { nombre: 60, pasos: 4000 },
     usadoEn: [{ hoja: 'Productos', col: 'tablaPrecioId' }],
     soloAdmin: true,
@@ -120,7 +120,7 @@ var CATALOGOS = {
   },
   // Proyecciones de entrega guardadas (con los datos y las fechas del momento en que se calcularon).
   proyecciones: {
-    hoja: 'Proyecciones', etiqueta: 'proyección',
+    hoja: 'Proyecciones', etiqueta: 'proyección', femenino: true,
     campos: { nombre: 80, inicio: 10, diasFabricacion: 4, diasTransito: 4, pausas: 2000, finFabricacion: 10, llegada: 10, notas: 1000,
               modo: 10, fechaBase: 10 },
     usadoEn: [],
@@ -237,16 +237,56 @@ function requireRol_(body, roles) {
 function requireAdmin_(body) { return requireRol_(body, ['admin']); }
 function requireEditor_(body) { return requireRol_(body, EDITORES); }
 
+/**
+ * Las credenciales que ya se validaron se guardan unos minutos en la caché del script (con una huella SHA-256 como
+ * clave: la contraseña no se guarda), para no leer la hoja Usuarios en cada llamada. Cualquier cambio de usuarios
+ * hecho desde la app invalida la caché al instante (ver conLock_); lo que se edite a mano en la hoja se nota a
+ * más tardar a los CACHE_AUTH_SEG segundos.
+ */
+var CACHE_AUTH_SEG = 300;
+var CLAVE_VERSION_AUTH = 'auth_version';
+
+function claveAuth_(nombre, pass) {
+  var huella = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, nombre.toUpperCase() + '\n' + pass, Utilities.Charset.UTF_8);
+  return 'auth_' + Utilities.base64Encode(huella);
+}
+
+/** Invalida todas las credenciales guardadas en caché (cambia la versión con la que se comparan). */
+function invalidarAuth_() {
+  try { CacheService.getScriptCache().put(CLAVE_VERSION_AUTH, Utilities.getUuid(), 21600); } catch (e) {}
+}
+
 function findUser_(usuario, password) {
   var nombre = String(usuario || '').trim();
   var pass = String(password || '');
   if (!nombre || !pass) return null;
+
+  var cache = null, clave = '', version = '';
+  try {
+    cache = CacheService.getScriptCache();
+    clave = claveAuth_(nombre, pass);
+    var guardado = cache.getAll([clave, CLAVE_VERSION_AUTH]);
+    version = guardado[CLAVE_VERSION_AUTH] || '';
+    if (!version) {
+      // Sin versión (primera vez o la caché la perdió): se crea una nueva, y con ella se descartan las entradas viejas.
+      version = Utilities.getUuid();
+      cache.put(CLAVE_VERSION_AUTH, version, 21600);
+    } else if (guardado[clave]) {
+      var c = JSON.parse(guardado[clave]);
+      if (c.v === version) return c.u;
+    }
+  } catch (e) {
+    cache = null; // sin caché disponible se valida contra la hoja, como siempre
+  }
+
   var t = leer_('Usuarios');
   for (var i = 0; i < t.filas.length; i++) {
     var u = t.filas[i];
     // El usuario no distingue mayúsculas/minúsculas; la contraseña sí.
     if (u.usuario.toUpperCase() === nombre.toUpperCase() && String(u.password) === pass && u.activo) {
-      return { usuario: u.usuario, rol: normalizarRol_(u.rol), nombre: u.nombre };
+      var encontrado = { usuario: u.usuario, rol: normalizarRol_(u.rol), nombre: u.nombre };
+      if (cache) { try { cache.put(clave, JSON.stringify({ v: version, u: encontrado }), CACHE_AUTH_SEG); } catch (e) {} }
+      return encontrado;
     }
   }
   return null;
@@ -282,6 +322,8 @@ function conLock_(revs, fn) {
   try {
     var r = fn();
     revs.forEach(bumpRevision_);
+    // Altas, cambios y bajas de usuarios (y de contraseñas): las credenciales en caché dejan de valer ya.
+    if (revs.indexOf('usuarios') !== -1) invalidarAuth_();
     return r;
   } finally {
     lock.releaseLock();
@@ -368,6 +410,7 @@ function handleCambiarMiPassword_(body) {
     if (!u) throw new Error('El usuario ya no existe.');
     u.password = nuevaPassword;
     escribir_('Usuarios', u);
+    invalidarAuth_(); // la contraseña vieja deja de valer ya, no cuando venza la caché
   });
   return jsonOut_({ ok: true });
 }
@@ -436,10 +479,10 @@ function handleGuardarCatalogo_(body) {
       // Un mismo nombre puede existir en grupos distintos (el 40 del calzado y el 40 de otra medida).
       return c.hoja !== 'Tamanos' || r.grupo.toUpperCase() === obj.grupo.toUpperCase();
     })[0];
-    if (repetido) throw new Error('Ya existe un ' + c.etiqueta + ' con ese nombre.');
+    if (repetido) throw new Error('Ya existe ' + (c.femenino ? 'una ' : 'un ') + c.etiqueta + ' con ese nombre.');
     if (id) {
       var actual = buscar_(t, 'id', id);
-      if (!actual) throw new Error('El ' + c.etiqueta + ' ya no existe.');
+      if (!actual) throw new Error((c.femenino ? 'La ' : 'El ') + c.etiqueta + ' ya no existe.');
       Object.keys(obj).forEach(function (k) { actual[k] = obj[k]; });
       escribir_(c.hoja, actual);
     } else {
@@ -457,7 +500,7 @@ function handleBorrarCatalogo_(body) {
   var id = String(body.id || '').trim();
   conLock_([body.tabla], function () {
     var actual = buscar_(leer_(c.hoja), 'id', id);
-    if (!actual) throw new Error('El ' + c.etiqueta + ' ya no existe.');
+    if (!actual) throw new Error((c.femenino ? 'La ' : 'El ') + c.etiqueta + ' ya no existe.');
     c.usadoEn.forEach(function (u) {
       if (buscar_(leer_(u.hoja), u.col, id)) {
         throw new Error('Está en uso en ' + u.hoja + '. Desactívalo en lugar de borrarlo.');

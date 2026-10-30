@@ -82,6 +82,7 @@ export default function Productos() {
           titulo="Marcas"
           descripcion="Marca de cada producto."
           singular="marca"
+          femenino
           campos={CAMPOS_NOMBRE}
           columnas={COLUMNAS_NOMBRE}
         />
