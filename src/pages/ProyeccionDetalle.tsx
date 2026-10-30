@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import { formatFecha, hoyIso } from '@/lib/format'
-import { pausasDe, proyectar, proyectarInverso } from '@/lib/proyeccion'
+import { fechaDia, pausasDe, proyectar, proyectarInverso } from '@/lib/proyeccion'
 import type { ProyeccionGuardada } from '@/lib/tipos'
 
 function Dato({ etiqueta, valor, nota, resaltar }: { etiqueta: string; valor: string; nota?: string; resaltar?: boolean }) {
@@ -32,7 +32,8 @@ function Cuerpo({ g }: { g: ProyeccionGuardada }) {
   const diasFab = Number(g.diasFabricacion)
   const diasTra = Number(g.diasTransito)
   // Desde la fecha que se indicó al crearla: el inicio o la llegada deseada (de la que sale la fecha límite).
-  const proy = esFinal ? proyectarInverso(g.fechaBase, diasFab, diasTra, pausas) : proyectar(g.fechaBase, diasFab, diasTra, pausas)
+  const base = fechaDia(g.fechaBase)
+  const proy = esFinal ? proyectarInverso(base, diasFab, diasTra, pausas) : proyectar(base, diasFab, diasTra, pausas)
   if (!proy) return <ErrorBox mensaje="No se pudo calcular esta proyección con los datos guardados." />
   const meses = proy.diasTotal / 30.4
 
@@ -41,7 +42,7 @@ function Cuerpo({ g }: { g: ProyeccionGuardada }) {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {esFinal ? (
           <>
-            <Dato etiqueta="El cliente quiere recibir" valor={formatFecha(g.fechaBase)} />
+            <Dato etiqueta="El cliente quiere recibir" valor={formatFecha(base)} />
             <Dato
               etiqueta="Fecha límite para hacer el pedido"
               valor={formatFecha(proy.inicio)}

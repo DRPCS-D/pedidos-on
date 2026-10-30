@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { aDia, aniosSinPausa, deDia, mesesDe, pausasDe, proyectar, proyectarInverso } from './proyeccion'
+import { aDia, aniosSinPausa, deDia, fechaDia, mesesDe, pausasDe, proyectar, proyectarInverso } from './proyeccion'
 
 const PAUSA = [{ anio: 2027, desde: '2027-01-01', hasta: '2027-02-28' }]
 
@@ -135,5 +135,21 @@ describe('aniosSinPausa', () => {
   it('no avisa si el año ya tiene pausa o la fabricación no toca enero ni febrero', () => {
     expect(aniosSinPausa('2026-11-15', '2027-04-13', PAUSA)).toEqual([])
     expect(aniosSinPausa('2027-03-10', '2027-06-01', [])).toEqual([])
+  })
+})
+
+describe('fechaDia', () => {
+  it('deja igual una fecha de día', () => {
+    expect(fechaDia('2027-08-30')).toBe('2027-08-30')
+  })
+  it('convierte el instante que devuelve Sheets al día local', () => {
+    // Medianoche local: el día no se corre aunque el instante esté en UTC.
+    const medianoche = new Date(2027, 7, 30).toISOString()
+    expect(fechaDia(medianoche)).toBe('2027-08-30')
+  })
+  it('devuelve vacío con lo que no es fecha', () => {
+    expect(fechaDia('')).toBe('')
+    expect(fechaDia(undefined)).toBe('')
+    expect(fechaDia('hola')).toBe('')
   })
 })

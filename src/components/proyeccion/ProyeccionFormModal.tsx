@@ -7,7 +7,7 @@ import { Modal } from '@/components/ui/modal'
 import { useConfig } from '@/hooks/useConfig'
 import { ejecutarConDatos } from '@/lib/ejecutar'
 import { formatFecha, hoyIso } from '@/lib/format'
-import { aDia, aniosSinPausa, pausasDe, proyectar, proyectarInverso } from '@/lib/proyeccion'
+import { aDia, aniosSinPausa, fechaDia, pausasDe, proyectar, proyectarInverso } from '@/lib/proyeccion'
 import type { ProyeccionGuardada } from '@/lib/tipos'
 import { cn } from '@/lib/utils'
 import { textoDiasHasta } from './textos'
@@ -50,7 +50,7 @@ export function ProyeccionFormModal({
     setNombre(g?.nombre ?? '')
     setNotas(g?.notas ?? '')
     setModo(g?.modo ?? 'inicio')
-    setFecha(g?.fechaBase ?? '')
+    setFecha(fechaDia(g?.fechaBase))
     setFab(g?.diasFabricacion ?? '')
     setTra(g?.diasTransito ?? '')
     setError(null)

@@ -32,6 +32,19 @@ export function aDia(iso: string): number | null {
   return n / MS_DIA
 }
 
+/**
+ * 'yyyy-MM-dd' aunque llegue un instante ISO ('2027-08-30T03:00:00.000Z'): Sheets puede guardar el día como fecha
+ * real en vez de texto. En ese caso se toma el día en hora local. Devuelve '' si no es una fecha.
+ */
+export function fechaDia(valor: string | null | undefined): string {
+  const t = String(valor ?? '').trim()
+  if (FECHA.test(t)) return t
+  const f = new Date(t)
+  if (!t || Number.isNaN(f.getTime())) return ''
+  const dos = (n: number) => String(n).padStart(2, '0')
+  return `${f.getFullYear()}-${dos(f.getMonth() + 1)}-${dos(f.getDate())}`
+}
+
 /** Número de día → 'yyyy-MM-dd'. */
 export function deDia(dia: number): string {
   return new Date(dia * MS_DIA).toISOString().slice(0, 10)

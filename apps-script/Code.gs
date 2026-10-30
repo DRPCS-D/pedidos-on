@@ -68,7 +68,7 @@ var ENCABEZADOS = {
 var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes', 'orden', 'porCaja', 'cajas', 'descuentoValor', 'anterior', 'nuevo'];
 var CASILLAS = ['activo', 'principal'];
 /** Columnas con fecha sin hora ('yyyy-MM-dd'); las demás fechas son ISO con hora. */
-var FECHAS_DIA = ['fechaPedido', 'fechaEstado', 'etd', 'eta'];
+var FECHAS_DIA = ['fechaPedido', 'fechaEstado', 'etd', 'eta', 'inicio', 'finFabricacion', 'llegada', 'fechaBase'];
 
 var ROLES = ['admin', 'operador', 'consulta'];
 var EDITORES = ['admin', 'operador'];
