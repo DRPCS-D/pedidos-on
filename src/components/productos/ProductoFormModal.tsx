@@ -9,7 +9,8 @@ import { Modal } from '@/components/ui/modal'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import { useConfig } from '@/hooks/useConfig'
 import { useProductos, type DatosProducto } from '@/hooks/useProductos'
-import { formatGs } from '@/lib/format'
+import { formatGs, formatUsd } from '@/lib/format'
+import { calcularPrecio, pasosDe, textoPaso } from '@/lib/precio'
 import type { Producto } from '@/lib/tipos'
 
 interface Form {
@@ -22,6 +23,7 @@ interface Form {
   precioCosto: string
   precioVentaUsd: string
   precioVentaGs: string
+  tablaPrecioId: string
   activo: boolean
 }
 
@@ -35,6 +37,7 @@ const VACIO: Form = {
   precioCosto: '',
   precioVentaUsd: '',
   precioVentaGs: '',
+  tablaPrecioId: '',
   activo: true,
 }
 
@@ -71,6 +74,7 @@ export function ProductoFormModal({
   const { data: marcas } = useCatalogo('marcas')
   const { data: tamanos } = useCatalogo('tamanos')
   const { data: proveedores } = useCatalogo('proveedores')
+  const { data: tablasPrecio } = useCatalogo('tablasPrecio')
   const { tipoCambio } = useConfig()
   const { guardar, refetch } = useProductos()
 
@@ -96,6 +100,7 @@ export function ProductoFormModal({
             precioCosto: producto.precioCosto ? String(producto.precioCosto) : '',
             precioVentaUsd: producto.precioVentaUsd ? String(producto.precioVentaUsd) : '',
             precioVentaGs: producto.precioVentaGs ? String(producto.precioVentaGs) : '',
+            tablaPrecioId: producto.tablaPrecioId ?? '',
             activo: producto.activo,
           }
         : VACIO,
@@ -118,6 +123,10 @@ export function ProductoFormModal({
     }
     return [...m.entries()]
   }, [tamanos, f.tamanoIds])
+
+  const tabla = tablasPrecio.find((t) => t.id === f.tablaPrecioId)
+  /** Cálculo de la tabla elegida con el costo escrito (para mostrar el desglose y llenar el precio de venta). */
+  const calculo = useMemo(() => (tabla ? calcularPrecio(num(f.precioCosto), pasosDe(tabla)) : null), [tabla, f.precioCosto])
 
   function agregarColor() {
     if (!colorNuevo.trim()) return
@@ -150,6 +159,7 @@ export function ProductoFormModal({
       precioCosto: num(f.precioCosto),
       precioVentaUsd: num(f.precioVentaUsd),
       precioVentaGs: num(f.precioVentaGs),
+      tablaPrecioId: f.tablaPrecioId,
       activo: f.activo,
     }
     const { error: err, data } = await guardar(idActual, datos)
@@ -317,12 +327,36 @@ export function ProductoFormModal({
           <p className="mt-1 text-xs text-muted-foreground">Sin tamaños = el producto no tiene tallas (accesorios, por ejemplo).</p>
         </div>
 
+        <Field label="Tabla de precios" hint="Fórmula con la que se calcula el precio de venta en USD a partir del costo.">
+          <Select value={f.tablaPrecioId} onChange={(e) => set('tablaPrecioId', e.target.value)}>
+            <option value="">Sin tabla (precio manual)</option>
+            {opciones(tablasPrecio, f.tablaPrecioId).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.nombre}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Costo (USD)">
             <Input inputMode="decimal" value={f.precioCosto} onChange={(e) => set('precioCosto', e.target.value)} />
           </Field>
           <Field label="Venta (USD)">
-            <Input inputMode="decimal" value={f.precioVentaUsd} onChange={(e) => set('precioVentaUsd', e.target.value)} />
+            <div className="flex gap-2">
+              <Input inputMode="decimal" value={f.precioVentaUsd} onChange={(e) => set('precioVentaUsd', e.target.value)} />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title={tabla ? `Calcular con la tabla ${tabla.nombre}` : 'Elige una tabla de precios'}
+                aria-label="Calcular precio de venta en dólares"
+                disabled={!calculo || !num(f.precioCosto)}
+                onClick={() => calculo && set('precioVentaUsd', String(calculo.total))}
+              >
+                <Calculator />
+              </Button>
+            </div>
           </Field>
           <Field
             label="Venta (Gs)"
@@ -344,6 +378,21 @@ export function ProductoFormModal({
             </div>
           </Field>
         </div>
+        {calculo && num(f.precioCosto) > 0 && (
+          <div className="-mt-2 rounded-md bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">
+              {tabla?.nombre}: costo {formatUsd(calculo.costo)} → venta {formatUsd(calculo.total)}
+              {num(f.precioVentaUsd) !== calculo.total && <span className="ml-2 font-normal text-warning">(el precio de venta escrito es otro)</span>}
+            </p>
+            <ul className="mt-1">
+              {calculo.desglose.map((d, i) => (
+                <li key={i}>
+                  {d.paso.etiqueta} ({textoPaso(d.paso)}): + {formatUsd(d.monto)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <p className="-mt-2 text-xs text-muted-foreground">Los precios valen para todos los colores y tamaños del producto.</p>
 
         {idActual && (

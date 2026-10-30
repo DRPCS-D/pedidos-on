@@ -15,6 +15,7 @@ export interface DatosProducto {
   precioVentaUsd: number
   precioVentaGs: number
   activo: boolean
+  tablaPrecioId: string
 }
 
 export function useProductos() {

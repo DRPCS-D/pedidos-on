@@ -39,7 +39,10 @@ var ENCABEZADOS = {
   Marcas: ['id', 'nombre', 'activo'],
   Tamanos: ['id', 'nombre', 'grupo', 'orden', 'activo'],
   Productos: ['id', 'codigo', 'descripcion', 'marcaId', 'proveedorId',
-              'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'activo'],
+              'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'activo', 'tablaPrecioId'],
+  TablasPrecio: ['id', 'nombre', 'pasos', 'activo'],
+  CambiosPrecio: ['id', 'entidad', 'entidadId', 'productoId', 'codigo', 'descripcion', 'campo', 'anterior', 'nuevo',
+                  'usuario', 'cuando'],
   ProductoColores: ['id', 'productoId', 'color'],
   ProductoTamanos: ['id', 'productoId', 'tamanoId'],
   Pedidos: ['id', 'folio', 'proveedorId', 'clienteId', 'estado', 'fechaPedido', 'notas',
@@ -60,7 +63,7 @@ var ENCABEZADOS = {
 };
 
 /** Columnas numéricas y de casilla: el resto se guarda como texto (formato @). */
-var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes', 'orden', 'porCaja', 'cajas', 'descuentoValor'];
+var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes', 'orden', 'porCaja', 'cajas', 'descuentoValor', 'anterior', 'nuevo'];
 var CASILLAS = ['activo', 'principal'];
 /** Columnas con fecha sin hora ('yyyy-MM-dd'); las demás fechas son ISO con hora. */
 var FECHAS_DIA = ['fechaPedido', 'fechaEstado', 'etd', 'eta'];
@@ -104,11 +107,19 @@ var CATALOGOS = {
     hoja: 'Tamanos', etiqueta: 'tamaño',
     campos: { nombre: 60, grupo: 40, orden: 6 },
     usadoEn: [{ hoja: 'ProductoTamanos', col: 'tamanoId' }]
+  },
+  // Fórmulas para calcular el precio de venta en USD a partir del costo; solo las edita el admin.
+  tablasPrecio: {
+    hoja: 'TablasPrecio', etiqueta: 'tabla de precios',
+    campos: { nombre: 60, pasos: 4000 },
+    usadoEn: [{ hoja: 'Productos', col: 'tablaPrecioId' }],
+    soloAdmin: true,
+    normalizar: function (obj) { obj.pasos = pasosPrecio_(obj.pasos); }
   }
 };
 
 var REVISIONES = ['usuarios', 'proveedores', 'clientes', 'marcas', 'tamanos', 'productos', 'pedidos',
-                  'contenedores', 'historial', 'archivos', 'config', 'pedidosCliente'];
+                  'contenedores', 'historial', 'archivos', 'config', 'pedidosCliente', 'tablasPrecio', 'cambiosPrecio'];
 
 // ---------- Entrada ----------
 
@@ -156,6 +167,7 @@ function doPost(e) {
       case 'cambiarEstadoPedidoCliente': return handleCambiarEstadoPedidoCliente_(body);
       case 'borrarPedidoCliente':    return handleBorrarPedidoCliente_(body);
       case 'listHistorial':          return handleListHistorial_(body);
+      case 'listCambiosPrecio':      return handleListCambiosPrecio_(body);
       case 'getConfig':              return handleGetConfig_(body);
       case 'setConfig':              return handleSetConfig_(body);
       case 'listArchivos':           return handleListArchivos_(body);
@@ -376,13 +388,14 @@ function handleListCatalogo_(body) {
 }
 
 function handleGuardarCatalogo_(body) {
-  requireEditor_(body);
   var c = catalogo_(body.tabla);
+  if (c.soloAdmin) requireAdmin_(body); else requireEditor_(body);
   var datos = body.datos || {};
   var obj = {};
   Object.keys(c.campos).forEach(function (k) { obj[k] = texto_(datos[k], c.campos[k]); });
   obj.activo = datos.activo !== false;
   if (!obj.nombre) throw new Error('El nombre es obligatorio.');
+  if (c.normalizar) c.normalizar(obj);
   var id = String(body.id || '').trim();
 
   conLock_([body.tabla], function () {
@@ -407,8 +420,8 @@ function handleGuardarCatalogo_(body) {
 }
 
 function handleBorrarCatalogo_(body) {
-  requireEditor_(body);
   var c = catalogo_(body.tabla);
+  if (c.soloAdmin) requireAdmin_(body); else requireEditor_(body);
   var id = String(body.id || '').trim();
   conLock_([body.tabla], function () {
     var actual = buscar_(leer_(c.hoja), 'id', id);
@@ -421,6 +434,27 @@ function handleBorrarCatalogo_(body) {
     borrarFila_(hoja_(c.hoja), actual._fila);
   });
   return jsonOut_({ ok: true });
+}
+
+/**
+ * Pasos de una tabla de precios, guardados como JSON. Cada paso suma al costo un monto fijo en USD o
+ * un porcentaje, sobre el costo original o sobre lo acumulado hasta ese paso. Devuelve el texto normalizado.
+ */
+function pasosPrecio_(texto) {
+  var lista;
+  try { lista = JSON.parse(texto || '[]'); } catch (e) { throw new Error('Los pasos de la tabla no son válidos.'); }
+  if (!Array.isArray(lista) || !lista.length) throw new Error('La tabla necesita al menos un paso.');
+  if (lista.length > 12) throw new Error('Una tabla admite hasta 12 pasos.');
+  return JSON.stringify(lista.map(function (p) {
+    var tipo = p && p.tipo === 'monto' ? 'monto' : 'porcentaje';
+    var etiqueta = texto_(p && p.etiqueta, 60);
+    if (!etiqueta) throw new Error('Cada paso necesita un nombre.');
+    return {
+      etiqueta: etiqueta, tipo: tipo,
+      base: tipo === 'porcentaje' && p.base === 'acumulado' ? 'acumulado' : 'costo',
+      valor: numero_(p && p.valor, 'El valor de «' + etiqueta + '»')
+    };
+  }));
 }
 
 // ---------- Productos ----------
@@ -530,12 +564,14 @@ function handleGuardarProducto_(body) {
     precioCosto: numero_(d.precioCosto, 'El precio de costo'),
     precioVentaUsd: numero_(d.precioVentaUsd, 'El precio de venta en USD'),
     precioVentaGs: Math.round(numero_(d.precioVentaGs, 'El precio de venta en Gs')),
-    activo: d.activo !== false
+    activo: d.activo !== false,
+    tablaPrecioId: texto_(d.tablaPrecioId, 40)
   };
   if (!obj.codigo) throw new Error('El código es obligatorio.');
   if (!obj.descripcion) throw new Error('La descripción es obligatoria.');
   validarReferencia_('Marcas', obj.marcaId, 'La marca');
   validarReferencia_('Proveedores', obj.proveedorId, 'El proveedor');
+  validarReferencia_('TablasPrecio', obj.tablaPrecioId, 'La tabla de precios');
   var colores = listaColores_(d.colores);
   var tamanoIds = listaTamanos_(d.tamanoIds);
   var id = String(body.id || '').trim();
@@ -626,7 +662,7 @@ function handleGuardarPedido_(body) {
   var id = String(body.id || '').trim();
   var ajustes = ajustesCosto_(body);
 
-  var resultado = conLock_(['pedidos', 'historial'], function () {
+  var resultado = conLock_(['pedidos', 'historial', 'cambiosPrecio'], function () {
     var tP = leer_('Pedidos');
     var pedido;
     if (id) {
@@ -656,7 +692,7 @@ function handleGuardarPedido_(body) {
       agregar_('Pedidos', pedido);
       agregarHistorial_('pedido', pedido.id, 'registrado', desde, user.usuario, '');
     }
-    guardarLineas_(pedido.id, lineasIn);
+    guardarLineas_(pedido.id, lineasIn, user.usuario);
     return { id: pedido.id, folio: pedido.folio };
   });
   return jsonOut_({ ok: true, id: resultado.id, folio: resultado.folio });
@@ -692,9 +728,10 @@ function ajustesCosto_(body) {
 }
 
 /** Líneas de un pedido a fábrica: no se pueden bajar de lo cargado en contenedores ni de lo asignado a clientes. */
-function guardarLineas_(pedidoId, lineasIn) {
+function guardarLineas_(pedidoId, lineasIn, usuario) {
   guardarLineasDe_({
     hoja: 'PedidoLineas', dueno: 'pedidoId', duenoId: pedidoId, conCosto: true,
+    entidad: 'pedido', usuario: usuario,
     comprometidos: [
       { mapa: cargadoPorLinea_(), texto: 'cargados en contenedores' },
       { mapa: asignadoPorLinea_(), texto: 'asignados a clientes' }
@@ -706,9 +743,10 @@ function guardarLineas_(pedidoId, lineasIn) {
  * Líneas de un pedido de cliente. Si se baja o se quita algo ya asignado desde pedidos a
  * fábrica, esa parte se libera y vuelve a ser stock del pedido a fábrica.
  */
-function guardarLineasCliente_(pcId, lineasIn) {
+function guardarLineasCliente_(pcId, lineasIn, usuario) {
   guardarLineasDe_({
     hoja: 'PCLineas', dueno: 'pcId', duenoId: pcId, conCosto: false,
+    entidad: 'pedidoCliente', usuario: usuario,
     comprometidos: [],
     liberar: liberarAsignacionesPc_
   }, lineasIn);
@@ -751,6 +789,7 @@ function guardarLineasDe_(cfg, lineasIn) {
   var tamanosPor = variantesPorProducto_('ProductoTamanos', 'tamanoId');
   var existentes = tL.filas.filter(function (l) { return l[cfg.dueno] === cfg.duenoId; });
   var vistos = {};
+  var cambios = {}; // cambios de precio de líneas existentes, uno por producto y campo
   var variantes = {}; // producto|color|tamaño: no puede repetirse dentro del pedido
   var claveVariante = function (productoId, color, tamanoId) {
     return productoId + '|' + String(color).toUpperCase() + '|' + tamanoId;
@@ -792,6 +831,7 @@ function guardarLineasDe_(cfg, lineasIn) {
       vistos[lid] = true;
       registrar(actual.codigo, claveVariante(actual.productoId, actual.color, actual.tamanoId));
       verificar(actual, cantidad, false);
+      anotarCambiosPrecio_(cfg, actual, precios, cambios);
       actual.cantidad = cantidad;
       actual.porCaja = porCaja;
       actual.cajas = cajas;
@@ -837,6 +877,47 @@ function guardarLineasDe_(cfg, lineasIn) {
       verificar(l, 0, true);
       borrarFila_(sheet, l._fila);
     });
+  Object.keys(cambios).forEach(function (k) { agregar_('CambiosPrecio', cambios[k]); });
+}
+
+/**
+ * Un pedido conserva los precios con que se cargó. Si se modifican, el cambio queda registrado con el
+ * precio anterior (y quién y cuándo). Las líneas de un mismo producto con el mismo cambio se anotan una vez.
+ */
+function anotarCambiosPrecio_(cfg, actual, precios, cambios) {
+  Object.keys(precios).forEach(function (campo) {
+    var antes = Number(actual[campo]) || 0;
+    var ahora = Number(precios[campo]) || 0;
+    if (antes === ahora) return;
+    var clave = actual.productoId + '|' + campo + '|' + antes + '|' + ahora;
+    if (cambios[clave]) return;
+    cambios[clave] = {
+      id: nuevoId_(), entidad: cfg.entidad, entidadId: cfg.duenoId, productoId: actual.productoId,
+      codigo: actual.codigo, descripcion: actual.descripcion, campo: campo, anterior: antes, nuevo: ahora,
+      usuario: cfg.usuario, cuando: new Date().toISOString()
+    };
+  });
+}
+
+function handleListCambiosPrecio_(body) {
+  requireAuth_(body);
+  var entidad = String(body.entidad || '');
+  var entidadId = String(body.entidadId || '');
+  var nombres = mapaNombres_();
+  var lista = leer_('CambiosPrecio').filas.filter(function (c) { return c.id && c.entidad === entidad && c.entidadId === entidadId; })
+    .map(function (c) {
+      var x = limpiar_(c);
+      x.usuarioNombre = nombreDe_(nombres, c.usuario);
+      return x;
+    });
+  return jsonOut_({ ok: true, cambios: lista });
+}
+
+function borrarCambiosPrecio_(entidad, entidadId) {
+  var sheet = hoja_('CambiosPrecio');
+  leer_('CambiosPrecio').filas.filter(function (c) { return c.entidad === entidad && c.entidadId === entidadId; })
+    .sort(function (a, b) { return b._fila - a._fila; })
+    .forEach(function (c) { borrarFila_(sheet, c._fila); });
 }
 
 /** Cantidad asignada a clientes, por línea de pedido a fábrica. */
@@ -905,12 +986,13 @@ function handleCambiarEstadoPedido_(body) {
 function handleBorrarPedido_(body) {
   requireAdmin_(body);
   var id = String(body.id || '').trim();
-  conLock_(['pedidos', 'historial', 'archivos'], function () {
+  conLock_(['pedidos', 'historial', 'archivos', 'cambiosPrecio'], function () {
     var p = buscar_(leer_('Pedidos'), 'id', id);
     if (!p) throw new Error('El pedido ya no existe.');
     if (p.estado !== 'cancelado') throw new Error('Solo se puede borrar un pedido cancelado. Cancélalo primero.');
     borrarDonde_('PedidoLineas', 'pedidoId', id);
     borrarHistorial_('pedido', id);
+    borrarCambiosPrecio_('pedido', id);
     borrarArchivosDe_('pedido', id);
     borrarFila_(hoja_('Pedidos'), p._fila);
   });
@@ -976,7 +1058,7 @@ function handleGuardarPedidoCliente_(body) {
   if (!lineasIn.length) throw new Error('El pedido debe tener al menos un producto con cantidad.');
   var id = String(body.id || '').trim();
 
-  var resultado = conLock_(['pedidosCliente', 'historial', 'pedidos'], function () {
+  var resultado = conLock_(['pedidosCliente', 'historial', 'pedidos', 'cambiosPrecio'], function () {
     var tP = leer_('PedidosCliente');
     var pc;
     if (id) {
@@ -997,7 +1079,7 @@ function handleGuardarPedidoCliente_(body) {
       agregar_('PedidosCliente', pc);
       agregarHistorial_('pedidoCliente', pc.id, 'registrado', desde, user.usuario, '');
     }
-    guardarLineasCliente_(pc.id, lineasIn);
+    guardarLineasCliente_(pc.id, lineasIn, user.usuario);
     var asignado = 0;
     if (body.asignar === true) asignado = asignarDisponible_([pc.id]);
     return { id: pc.id, folio: pc.folio, asignado: asignado };
@@ -1153,12 +1235,13 @@ function handleCambiarEstadoPedidoCliente_(body) {
 function handleBorrarPedidoCliente_(body) {
   requireAdmin_(body);
   var id = String(body.id || '').trim();
-  conLock_(['pedidosCliente', 'historial'], function () {
+  conLock_(['pedidosCliente', 'historial', 'cambiosPrecio'], function () {
     var pc = buscar_(leer_('PedidosCliente'), 'id', id);
     if (!pc) throw new Error('El pedido ya no existe.');
     if (pc.estado !== 'cancelado') throw new Error('Solo se puede borrar un pedido cancelado. Cancélalo primero.');
     borrarDonde_('PCLineas', 'pcId', id);
     borrarHistorial_('pedidoCliente', id);
+    borrarCambiosPrecio_('pedidoCliente', id);
     borrarFila_(hoja_('PedidosCliente'), pc._fila);
   });
   return jsonOut_({ ok: true });

@@ -6,7 +6,7 @@ import { Field, Input } from '@/components/ui/field'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import type { DatosLinea } from '@/hooks/usePedidos'
 import { useProductos } from '@/hooks/useProductos'
-import { normalizar } from '@/lib/format'
+import { formatGs, formatUsd, normalizar } from '@/lib/format'
 import {
   cantidadesDeCurva,
   claveCelda,
@@ -223,7 +223,7 @@ export function EditorProductos({
   /** «cargados en contenedores», «asignados desde pedidos a fábrica»… para el aviso de cada fila. */
   textoComprometido: string
 }) {
-  const { data: productos } = useProductos()
+  const { data: productos, porId } = useProductos()
   const { deProducto } = useConstructorGrupos()
   const [busqueda, setBusqueda] = useState('')
 
@@ -262,6 +262,33 @@ export function EditorProductos({
     setGrupos((gs) =>
       gs.map((x) => (x.clave === g.clave ? conCurva(x, x.curva, { ...x.cajas, [color]: valor }, color) : x)),
     )
+
+  /**
+   * Precios del catálogo que difieren de los del pedido, en una línea ya guardada. Un pedido conserva los
+   * precios con que se cargó; el usuario decide si los actualiza (y el cambio queda registrado al guardar).
+   */
+  function preciosDelCatalogo(g: GrupoForm) {
+    const p = porId.get(g.productoId)
+    if (!p || Object.keys(g.ids).length === 0) return null
+    const cambios: Partial<GrupoForm> = {}
+    const textos: string[] = []
+    if (modo === 'fabrica') {
+      if (p.precioCosto !== num(g.precioCosto)) {
+        cambios.precioCosto = texto(p.precioCosto)
+        textos.push(`costo ${formatUsd(p.precioCosto)} (en el pedido ${formatUsd(num(g.precioCosto))})`)
+      }
+    } else {
+      if (p.precioVentaUsd !== num(g.precioVentaUsd)) {
+        cambios.precioVentaUsd = texto(p.precioVentaUsd)
+        textos.push(`venta ${formatUsd(p.precioVentaUsd)} (en el pedido ${formatUsd(num(g.precioVentaUsd))})`)
+      }
+      if (p.precioVentaGs !== num(g.precioVentaGs)) {
+        cambios.precioVentaGs = texto(p.precioVentaGs)
+        textos.push(`${formatGs(p.precioVentaGs)} (en el pedido ${formatGs(num(g.precioVentaGs))})`)
+      }
+    }
+    return textos.length ? { cambios, texto: textos.join(' · ') } : null
+  }
 
   return (
     <div>
@@ -314,6 +341,7 @@ export function EditorProductos({
             const unico = sinVariantes(g.ejes)
             const hayColores = !(g.ejes.colores.length === 1 && !g.ejes.colores[0])
             const bloqueado = Object.values(g.comprometidos).some((n) => n > 0)
+            const nuevosPrecios = preciosDelCatalogo(g)
             return (
               <section key={g.clave} className="overflow-hidden rounded-md border border-border">
                 <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-secondary/50 px-3 py-2">
@@ -457,6 +485,14 @@ export function EditorProductos({
                       </Field>
                     </div>
                   )}
+                  {nuevosPrecios && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
+                      <span>El catálogo tiene otro precio: {nuevosPrecios.texto}. Este pedido conserva el pactado.</span>
+                      <Button type="button" variant="outline" size="sm" onClick={() => cambiar(g.clave, nuevosPrecios.cambios)}>
+                        Usar el del catálogo
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </section>
             )
@@ -465,7 +501,7 @@ export function EditorProductos({
       )}
       <p className="mt-2 text-xs text-muted-foreground">
         Los precios se copian del producto al agregarlo y valen para todos sus colores y tamaños; si luego cambian en el catálogo,
-        este pedido no se altera.
+        este pedido no se altera. Si cambias un precio ya guardado, queda registrado el precio original.
       </p>
     </div>
   )

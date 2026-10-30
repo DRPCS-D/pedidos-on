@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { BadgeEstadoPedido } from '@/components/pedidos/badges'
 import { CambiarEstadoModal } from '@/components/pedidos/CambiarEstadoModal'
+import { CambiosPrecio } from '@/components/pedidos/CambiosPrecio'
 import { LineaDeTiempo } from '@/components/pedidos/LineaDeTiempo'
 import { AsignarModal } from '@/components/pedidosCliente/AsignarModal'
 import { BadgeSituacion } from '@/components/pedidosCliente/badges'
@@ -249,6 +250,8 @@ export default function PedidoClienteDetalle() {
           </table>
         </div>
       </section>
+
+      <CambiosPrecio entidad="pedidoCliente" id={pc.id} />
 
       <section className="rounded-lg border border-border bg-card p-5 shadow-xs">
         <div className="mb-3 flex items-center justify-between gap-3">

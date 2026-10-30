@@ -127,7 +127,29 @@ export interface Tamano extends ItemCatalogo {
   orden: number
 }
 
-export type NombreCatalogo = 'proveedores' | 'clientes' | 'marcas' | 'tamanos'
+/** Fórmula de precio de venta: `pasos` es un texto JSON (ver lib/precio.ts). */
+export interface TablaPrecio extends ItemCatalogo {
+  pasos: string
+}
+
+export type NombreCatalogo = 'proveedores' | 'clientes' | 'marcas' | 'tamanos' | 'tablasPrecio'
+
+/** Modificación del precio de una línea ya cargada en un pedido. */
+export interface CambioPrecio {
+  id: string
+  entidad: 'pedido' | 'pedidoCliente'
+  entidadId: string
+  productoId: string
+  codigo: string
+  descripcion: string
+  campo: 'precioCosto' | 'precioVentaUsd' | 'precioVentaGs'
+  anterior: number
+  nuevo: number
+  usuario: string
+  usuarioNombre: string
+  /** ISO con hora. */
+  cuando: string
+}
 
 export interface Producto {
   id: string
@@ -143,6 +165,8 @@ export interface Producto {
   /** Guaraníes */
   precioVentaGs: number
   activo: boolean
+  /** Tabla de precios con la que se calcula el precio de venta (vacío = ninguna). */
+  tablaPrecioId: string
   /** Id de Drive de la foto principal, vacío si no tiene. */
   fotoId: string
   /** Colores en que viene (vacío = sin variantes de color). */

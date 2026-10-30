@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Adjuntos } from '@/components/archivos/Adjuntos'
+import { CambiosPrecio } from '@/components/pedidos/CambiosPrecio'
 import { BadgeCarga, BadgeEstadoContenedor, BadgeEstadoPedido } from '@/components/pedidos/badges'
 import { CambiarEstadoModal } from '@/components/pedidos/CambiarEstadoModal'
 import { LineaDeTiempo } from '@/components/pedidos/LineaDeTiempo'
@@ -272,6 +273,8 @@ export default function PedidoDetalle() {
           </dl>
         )}
       </section>
+
+      <CambiosPrecio entidad="pedido" id={pedido.id} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-lg border border-border bg-card p-5 shadow-xs">

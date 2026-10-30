@@ -40,6 +40,14 @@ export const TABLAS = {
   clientes: catalogo('clientes', 'No se pudieron cargar los clientes.'),
   marcas: catalogo('marcas', 'No se pudieron cargar las marcas.'),
   tamanos: catalogo('tamanos', 'No se pudieron cargar los tamaños.'),
+  tablasPrecio: catalogo('tablasPrecio', 'No se pudieron cargar las tablas de precio.'),
+  cambiosPrecio: {
+    accion: 'listCambiosPrecio',
+    campo: 'cambios',
+    rev: 'cambiosPrecio',
+    persistir: false,
+    mensajeError: 'No se pudieron cargar los cambios de precio.',
+  },
   productos: {
     accion: 'listProductos',
     campo: 'productos',
