@@ -160,6 +160,9 @@ function doPost(e) {
 
   // Las lecturas (list*, get*, login, fotos*) no llevan contadores; todo lo demás sí, para que el frontend no tenga que preguntarlos.
   ADJUNTAR_REVISIONES_ = !/^(list|get|login|fotos)/i.test(String(body.action || ''));
+  SS_ = null;
+  HOJAS_ = {};
+  PROPS_RECIENTES_ = null;
 
   try {
     switch (body.action) {
@@ -297,14 +300,23 @@ function findUser_(usuario, password) {
 // "¿cambió algo?" sin leer ninguna hoja. Se incrementa dentro del lock de cada
 // escritura. Editar el Sheet a mano NO lo incrementa (para eso está el botón ↻).
 
-function bumpRevision_(key) {
+/** Propiedades del script tal como quedaron tras el último incremento de esta ejecución (evita volver a leerlas). */
+var PROPS_RECIENTES_ = null;
+
+/** Sube en uno el contador de cada revisión indicada, con una sola lectura y una sola escritura de propiedades. */
+function bumpRevisiones_(claves) {
+  if (!claves.length) return;
   var props = PropertiesService.getScriptProperties();
-  var actual = Number(props.getProperty('rev_' + key)) || 0;
-  props.setProperty('rev_' + key, String(actual + 1));
+  var todas = props.getProperties();
+  var nuevas = {};
+  claves.forEach(function (k) { nuevas['rev_' + k] = String((Number(todas['rev_' + k]) || 0) + 1); });
+  props.setProperties(nuevas);
+  Object.keys(nuevas).forEach(function (k) { todas[k] = nuevas[k]; });
+  PROPS_RECIENTES_ = todas;
 }
 
 function revisionesActuales_() {
-  var props = PropertiesService.getScriptProperties().getProperties();
+  var props = PROPS_RECIENTES_ || PropertiesService.getScriptProperties().getProperties();
   var revisiones = {};
   REVISIONES.forEach(function (k) { revisiones[k] = Number(props['rev_' + k]) || 0; });
   return revisiones;
@@ -321,7 +333,7 @@ function conLock_(revs, fn) {
   lock.waitLock(20000);
   try {
     var r = fn();
-    revs.forEach(bumpRevision_);
+    bumpRevisiones_(revs);
     // Altas, cambios y bajas de usuarios (y de contraseñas): las credenciales en caché dejan de valer ya.
     if (revs.indexOf('usuarios') !== -1) invalidarAuth_();
     return r;
@@ -1200,7 +1212,7 @@ function handleGuardarPedidoCliente_(body) {
 function bumpRevisionTras_(revs) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
-  try { revs.forEach(bumpRevision_); } finally { lock.releaseLock(); }
+  try { bumpRevisiones_(revs); } finally { lock.releaseLock(); }
 }
 
 /**
@@ -2009,7 +2021,18 @@ function aplicarValidaciones_(ss) {
 // Cada pestaña se lee como objetos con las claves de ENCABEZADOS (más `_fila`,
 // el número de fila 1-based) y se escribe con el mismo orden de columnas.
 
+/** Hoja de cálculo y pestañas ya abiertas en esta ejecución: abrirlas en cada acceso cuesta cientos de milisegundos. */
+var SS_ = null;
+var HOJAS_ = {};
+
 function getSpreadsheet_(crear) {
+  if (SS_) return SS_;
+  var ss = abrirSpreadsheet_(crear);
+  SS_ = ss;
+  return ss;
+}
+
+function abrirSpreadsheet_(crear) {
   var activa = SpreadsheetApp.getActiveSpreadsheet();
   if (activa) return activa;
   var props = PropertiesService.getScriptProperties();
@@ -2029,8 +2052,10 @@ function getSpreadsheet_(crear) {
 }
 
 function hoja_(nombre) {
+  if (HOJAS_[nombre]) return HOJAS_[nombre];
   var sheet = getSpreadsheet_(false).getSheetByName(nombre);
   if (!sheet) throw new Error('No existe la pestaña "' + nombre + '" en la hoja de cálculo. Ejecuta "instalar".');
+  HOJAS_[nombre] = sheet;
   return sheet;
 }
 
