@@ -10,15 +10,22 @@ import { useForzarActualizacion } from '@/hooks/useTabla'
 import { ROL_LABEL } from '@/lib/tipos'
 import { cn } from '@/lib/utils'
 
-const NAV_PRINCIPAL = [
+interface ItemNav {
+  to: string
+  label: string
+  end: boolean
+  /** Otras rutas que también dejan marcado este enlace (los detalles de pedidos de clientes cuelgan de «Pedidos»). */
+  tambien?: string[]
+}
+
+const NAV_PRINCIPAL: ItemNav[] = [
   { to: '/', label: 'Inicio', end: true },
-  { to: '/pedidos', label: 'Pedidos fábrica', end: false },
-  { to: '/pedidos-cliente', label: 'Pedidos cliente', end: false },
+  { to: '/pedidos', label: 'Pedidos', end: false, tambien: ['/pedidos-cliente'] },
   { to: '/contenedores', label: 'Contenedores', end: false },
+  { to: '/productos', label: 'Productos', end: false },
 ]
 const NAV_MAS = [
   { to: '/proyeccion', label: 'Proyección' },
-  { to: '/productos', label: 'Productos' },
   { to: '/clientes', label: 'Clientes' },
   { to: '/proveedores', label: 'Proveedores' },
 ]
@@ -89,6 +96,16 @@ function MenuMas({ items }: { items: { to: string; label: string }[] }) {
   )
 }
 
+function EnlaceNav({ item }: { item: ItemNav }) {
+  const { pathname } = useLocation()
+  const extra = item.tambien?.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ?? false
+  return (
+    <NavLink to={item.to} end={item.end} className={({ isActive }) => claseLink(isActive || extra)}>
+      {item.label}
+    </NavLink>
+  )
+}
+
 const claseLink = (isActive: boolean) =>
   cn(
     'shrink-0 rounded-md px-3 py-1.5 text-sm transition-colors',
@@ -120,9 +137,7 @@ export default function AppLayout() {
 
           <nav className="ml-2 hidden items-center gap-1 sm:flex">
             {NAV_PRINCIPAL.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => claseLink(isActive)}>
-                {item.label}
-              </NavLink>
+              <EnlaceNav key={item.to} item={item} />
             ))}
             <MenuMas items={MAS} />
           </nav>
@@ -160,9 +175,7 @@ export default function AppLayout() {
         <nav className="flex items-center gap-1 border-t border-border px-4 py-1.5 sm:hidden">
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {NAV_PRINCIPAL.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => claseLink(isActive)}>
-                {item.label}
-              </NavLink>
+              <EnlaceNav key={item.to} item={item} />
             ))}
           </div>
           <MenuMas items={MAS} />

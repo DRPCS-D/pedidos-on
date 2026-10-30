@@ -10,7 +10,6 @@ import NoEncontrado from '@/pages/NoEncontrado'
 import PedidoClienteDetalle from '@/pages/PedidoClienteDetalle'
 import PedidoDetalle from '@/pages/PedidoDetalle'
 import Pedidos from '@/pages/Pedidos'
-import PedidosCliente from '@/pages/PedidosCliente'
 import Productos from '@/pages/Productos'
 import Proveedores from '@/pages/Proveedores'
 import ProyeccionDetalle from '@/pages/ProyeccionDetalle'
@@ -31,7 +30,7 @@ export default function App() {
         <Route index element={<Inicio />} />
         <Route path="pedidos" element={<Pedidos />} />
         <Route path="pedidos/:id" element={<PedidoDetalle />} />
-        <Route path="pedidos-cliente" element={<PedidosCliente />} />
+        <Route path="pedidos-cliente" element={<Navigate to="/pedidos?pestana=clientes" replace />} />
         <Route path="pedidos-cliente/:id" element={<PedidoClienteDetalle />} />
         <Route path="contenedores" element={<Contenedores />} />
         <Route path="contenedores/:id" element={<ContenedorDetalle />} />

@@ -67,7 +67,7 @@ export default function Inicio() {
 
   const modulos: Modulo[] = [
     { to: '/pedidos', titulo: 'Pedidos a fábrica', descripcion: 'Pedidos a fábrica, estados y documentos.', icono: PackageSearch },
-    { to: '/pedidos-cliente', titulo: 'Pedidos de clientes', descripcion: 'Lo que pide cada cliente y de dónde se cubre.', icono: ClipboardList },
+    { to: '/pedidos?pestana=clientes', titulo: 'Pedidos de clientes', descripcion: 'Lo que pide cada cliente y de dónde se cubre.', icono: ClipboardList },
     { to: '/contenedores', titulo: 'Contenedores', descripcion: 'Embarques, carga y llegadas.', icono: Container },
     { to: '/productos', titulo: 'Productos', descripcion: 'Catálogo con fotos, marcas, tamaños y precios.', icono: Package },
     { to: '/clientes', titulo: 'Clientes', descripcion: 'Quién pide y todos sus pedidos.', icono: UserRound },
@@ -131,11 +131,11 @@ export default function Inicio() {
           <Skeleton className="mt-3 h-8 w-64" />
         ) : (
           <div className="mt-2 flex flex-wrap items-end gap-x-10 gap-y-3">
-            <Link to="/pedidos-cliente" className="hover:opacity-80">
+            <Link to="/pedidos?pestana=clientes" className="hover:opacity-80">
               <p className="tabular text-3xl font-semibold text-foreground">{clientesEnCurso.length}</p>
               <p className="text-xs text-muted-foreground">en curso</p>
             </Link>
-            <Link to="/pedidos-cliente" className="hover:opacity-80">
+            <Link to="/pedidos?pestana=clientes" className="hover:opacity-80">
               <p className={`tabular text-3xl font-semibold ${porPedir > 0 ? 'text-warning' : 'text-foreground'}`}>
                 {formatCantidad(porPedir)}
               </p>

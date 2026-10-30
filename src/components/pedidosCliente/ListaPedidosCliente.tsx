@@ -20,7 +20,8 @@ import { pendientesDeClientes } from '@/lib/pedidoCliente'
 
 type FiltroEstado = 'activos' | 'todos' | 'registrado' | 'entregado' | 'cancelado'
 
-export default function PedidosCliente() {
+/** Lista de pedidos con filtros y alta. Es una pestaña de la página Pedidos. */
+export function ListaPedidosCliente() {
   const { puedeEditar } = useAuth()
   const navigate = useNavigate()
   const { data, loading, error, refetch, asignarAutomatico } = usePedidosCliente()
@@ -57,16 +58,45 @@ export default function PedidosCliente() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Pedidos de clientes</h1>
-          <p className="text-sm text-muted-foreground">
-            Lo que pide cada cliente y de qué pedidos a fábrica se cubre.
-            {unidadesPendientes > 0 && ` Faltan por pedir a fábrica ${formatCantidad(unidadesPendientes)} unidades.`}
-          </p>
-        </div>
+      {unidadesPendientes > 0 && (
+        <p className="mb-3 text-sm text-muted-foreground">Faltan por pedir a fábrica {formatCantidad(unidadesPendientes)} unidades.</p>
+      )}
+
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {loading ? (
+          <Skeleton className="h-9.5 w-full max-w-xl" />
+        ) : (
+          data.length > 0 && (
+            <>
+              <div className="relative w-full max-w-xs">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Buscar"
+                  className="pl-9"
+                  placeholder="Folio, cliente o código…"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                />
+              </div>
+              <Select aria-label="Estado" className="w-44" value={estado} onChange={(e) => setEstado(e.target.value as FiltroEstado)}>
+                <option value="activos">En curso</option>
+                <option value="todos">Todos</option>
+                <option value="entregado">Entregados</option>
+                <option value="cancelado">Cancelados</option>
+              </Select>
+              <Select aria-label="Cliente" className="w-48" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+                <option value="">Todos los clientes</option>
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </Select>
+            </>
+          )
+        )}
         {puedeEditar && (
-          <div className="flex flex-wrap gap-2">
+          <div className="ml-auto flex flex-wrap gap-2">
             <Button variant="outline" onClick={asignarTodo} disabled={asignando} title="Cubre los pedidos con lo que haya disponible en pedidos a fábrica">
               <Wand2 /> {asignando ? 'Asignando…' : 'Asignar lo disponible'}
             </Button>
@@ -76,39 +106,6 @@ export default function PedidosCliente() {
           </div>
         )}
       </div>
-
-      {loading ? (
-        <Skeleton className="mb-4 h-9.5 max-w-xl" />
-      ) : (
-        data.length > 0 && (
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <div className="relative w-full max-w-xs">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                aria-label="Buscar"
-                className="pl-9"
-                placeholder="Folio, cliente o código…"
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-              />
-            </div>
-            <Select aria-label="Estado" className="w-44" value={estado} onChange={(e) => setEstado(e.target.value as FiltroEstado)}>
-              <option value="activos">En curso</option>
-              <option value="todos">Todos</option>
-              <option value="entregado">Entregados</option>
-              <option value="cancelado">Cancelados</option>
-            </Select>
-            <Select aria-label="Cliente" className="w-48" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-              <option value="">Todos los clientes</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )
-      )}
 
       {loading ? (
         <TableSkeleton columnas={[10, 12, 22, 8, 12, 12, 20]} />

@@ -1,173 +1,56 @@
-import { PackageSearch, Plus, Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { BadgeCarga, BadgeEstadoPedido } from '@/components/pedidos/badges'
-import { PedidoFormModal } from '@/components/pedidos/PedidoFormModal'
-import { Button } from '@/components/ui/button'
-import { ErrorBox, Vacio } from '@/components/ui/estado'
-import { Input, Select } from '@/components/ui/field'
-import { Skeleton } from '@/components/ui/skeleton'
-import { TableSkeleton } from '@/components/ui/table-skeleton'
-import { TablaScroll } from '@/components/ui/tabla-scroll'
-import { useAuth } from '@/hooks/useAuth'
-import { useCatalogo } from '@/hooks/useCatalogo'
-import { usePedidos } from '@/hooks/usePedidos'
-import { formatCantidad, formatFecha, formatUsd, normalizar } from '@/lib/format'
-import { cargaDePedido, totalConAjustes, totalesLineas } from '@/lib/pedidos'
-import { ESTADO_PEDIDO_LABEL, ESTADOS_PEDIDO, type EstadoPedido } from '@/lib/tipos'
+import { useSearchParams } from 'react-router-dom'
+import { ListaPedidosFabrica } from '@/components/pedidos/ListaPedidosFabrica'
+import { ListaPedidosCliente } from '@/components/pedidosCliente/ListaPedidosCliente'
+import { cn } from '@/lib/utils'
 
-type FiltroEstado = EstadoPedido | 'activos' | ''
+/** Cada pestaña con su nombre y el título y la descripción que la página muestra mientras está elegida. */
+const PESTANAS = [
+  { clave: 'fabrica', etiqueta: 'A fábrica', titulo: 'Pedidos a fábrica', descripcion: 'Pedidos a fábricas de China y su estado.' },
+  {
+    clave: 'clientes',
+    etiqueta: 'Clientes',
+    titulo: 'Pedidos de clientes',
+    descripcion: 'Lo que pide cada cliente y de qué pedidos a fábrica se cubre.',
+  },
+] as const
 
+type Pestana = (typeof PESTANAS)[number]['clave']
+
+/** Pedidos a fábrica y pedidos de clientes, en pestañas. */
 export default function Pedidos() {
-  const { puedeEditar } = useAuth()
-  const navigate = useNavigate()
-  const { data, loading, error } = usePedidos()
-  const { data: proveedores, nombres: nombreProveedor } = useCatalogo('proveedores')
+  // La pestaña va en la dirección (?pestana=clientes) para que recargar o volver atrás no la pierda.
+  const [params, setParams] = useSearchParams()
+  const pedida = params.get('pestana')
+  const actual = PESTANAS.find((p) => p.clave === pedida) ?? PESTANAS[0]
+  const pestana: Pestana = actual.clave
 
-  const [busqueda, setBusqueda] = useState('')
-  const [estado, setEstado] = useState<FiltroEstado>('activos')
-  const [proveedorId, setProveedorId] = useState('')
-  const [nuevo, setNuevo] = useState(false)
-
-  const filtrados = useMemo(() => {
-    const q = normalizar(busqueda)
-    return data.filter((p) => {
-      if (estado === 'activos' ? p.estado === 'entregado' || p.estado === 'cancelado' : estado && p.estado !== estado) return false
-      if (proveedorId && p.proveedorId !== proveedorId) return false
-      if (!q) return true
-      const texto = `${p.folio} ${nombreProveedor.get(p.proveedorId) ?? ''} ${p.lineas.map((l) => l.codigo).join(' ')}`
-      return normalizar(texto).includes(q)
-    })
-  }, [data, busqueda, estado, proveedorId, nombreProveedor])
+  const elegir = (clave: Pestana) => setParams(clave === 'fabrica' ? {} : { pestana: clave }, { replace: true })
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Pedidos a fábrica</h1>
-          <p className="text-sm text-muted-foreground">Pedidos a fábricas de China y su estado.</p>
-        </div>
-        {puedeEditar && (
-          <Button onClick={() => setNuevo(true)}>
-            <Plus /> Nuevo pedido
-          </Button>
-        )}
+      <div className="mb-5">
+        <h1 className="text-lg font-semibold text-foreground">{actual.titulo}</h1>
+        <p className="text-sm text-muted-foreground">{actual.descripcion}</p>
       </div>
 
-      {loading ? (
-        <Skeleton className="mb-4 h-9.5 max-w-xl" />
-      ) : (
-        data.length > 0 && (
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <div className="relative w-full max-w-xs">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                aria-label="Buscar"
-                className="pl-9"
-                placeholder="Folio, fábrica o código…"
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-              />
-            </div>
-            <Select aria-label="Estado" className="w-44" value={estado} onChange={(e) => setEstado(e.target.value as FiltroEstado)}>
-              <option value="activos">En curso</option>
-              <option value="">Todos los estados</option>
-              {ESTADOS_PEDIDO.map((e) => (
-                <option key={e} value={e}>
-                  {ESTADO_PEDIDO_LABEL[e]}
-                </option>
-              ))}
-            </Select>
-            <Select aria-label="Fábrica" className="w-44" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-              <option value="">Todas las fábricas</option>
-              {proveedores.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )
-      )}
+      <div className="mb-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border">
+        {PESTANAS.map(({ clave, etiqueta }) => (
+          <button
+            key={clave}
+            onClick={() => elegir(clave)}
+            className={cn(
+              '-mb-px shrink-0 border-b-2 px-4 py-2 text-sm transition-colors',
+              pestana === clave
+                ? 'border-primary font-medium text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {etiqueta}
+          </button>
+        ))}
+      </div>
 
-      {loading ? (
-        <TableSkeleton columnas={[10, 12, 20, 20, 8, 12, 14]} />
-      ) : error ? (
-        <ErrorBox mensaje={error} />
-      ) : data.length === 0 ? (
-        <Vacio
-          icono={PackageSearch}
-          titulo="Sin pedidos todavía"
-          descripcion={puedeEditar ? 'Crea el primero con «Nuevo pedido». Necesitas al menos una fábrica y un producto.' : undefined}
-        />
-      ) : filtrados.length === 0 ? (
-        <Vacio icono={PackageSearch} titulo="Sin resultados" descripcion="Prueba con otro filtro." />
-      ) : (
-        <TablaScroll total={filtrados.length} clave={`${busqueda}|${estado}|${proveedorId}`}>
-          {(limite) => (
-            <>
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-2.5 font-medium">Folio</th>
-                  <th className="px-4 py-2.5 font-medium">Fecha</th>
-                  <th className="px-4 py-2.5 font-medium">Fábrica</th>
-                  <th className="px-4 py-2.5 font-medium">Asignado</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Unid.</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Costo</th>
-                  <th className="px-4 py-2.5 font-medium">Estado</th>
-                  <th className="px-4 py-2.5 font-medium">Desde</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtrados.slice(0, limite).map((p) => {
-                  const t = totalesLineas(p.lineas)
-                  const carga = cargaDePedido(p)
-                  return (
-                    <tr
-                      key={p.id}
-                      onClick={() => navigate(`/pedidos/${p.id}`)}
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          navigate(`/pedidos/${p.id}`)
-                        }
-                      }}
-                      className="cursor-pointer border-b border-border last:border-0 hover:bg-accent/40"
-                    >
-                      <td className="whitespace-nowrap px-4 py-2.5 font-medium text-foreground">{p.folio}</td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{formatFecha(p.fechaPedido)}</td>
-                      <td className="px-4 py-2.5 text-foreground">{nombreProveedor.get(p.proveedorId) ?? '—'}</td>
-                      <td className="tabular whitespace-nowrap px-4 py-2.5 text-muted-foreground">
-                        {t.unidades > 0 ? `${formatCantidad(p.lineas.reduce((s, l) => s + l.asignado, 0))} / ${formatCantidad(t.unidades)}` : '—'}
-                      </td>
-                      <td className="tabular px-4 py-2.5 text-right text-foreground">{t.unidades.toLocaleString('es-PY')}</td>
-                      <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-muted-foreground">{formatUsd(totalConAjustes(t.costo, p).total)}</td>
-                      <td className="px-4 py-2.5">
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          <BadgeEstadoPedido estado={p.estado} />
-                          {carga === 'parcial' && <BadgeCarga carga={carga} />}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{formatFecha(p.fechaEstado)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </>
-          )}
-        </TablaScroll>
-      )}
-
-      <PedidoFormModal
-        abierto={nuevo}
-        pedido={null}
-        onCerrar={() => setNuevo(false)}
-        onGuardado={(id) => {
-          setNuevo(false)
-          navigate(`/pedidos/${id}`)
-        }}
-      />
+      {pestana === 'fabrica' ? <ListaPedidosFabrica /> : <ListaPedidosCliente />}
     </div>
   )
 }

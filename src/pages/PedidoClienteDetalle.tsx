@@ -61,7 +61,7 @@ export default function PedidoClienteDetalle() {
         titulo="No se encontró el pedido"
         descripcion="Pudo haberse borrado."
         accion={
-          <Button variant="outline" onClick={() => navigate('/pedidos-cliente')}>
+          <Button variant="outline" onClick={() => navigate('/pedidos?pestana=clientes')}>
             Volver a pedidos de clientes
           </Button>
         }
@@ -96,14 +96,14 @@ export default function PedidoClienteDetalle() {
     refetchPedidos()
     if (confirmando === 'borrar') {
       toast.success('Pedido borrado.')
-      navigate('/pedidos-cliente', { replace: true })
+      navigate('/pedidos?pestana=clientes', { replace: true })
     } else toast.success('Se deshizo el último cambio de estado.')
     setConfirmando(null)
   }
 
   return (
     <div className="space-y-6">
-      <Link to="/pedidos-cliente" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+      <Link to="/pedidos?pestana=clientes" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> Pedidos de clientes
       </Link>
 
