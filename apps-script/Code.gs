@@ -59,7 +59,8 @@ var ENCABEZADOS = {
   Asignaciones: ['id', 'pcLineaId', 'lineaId', 'cantidad'],
   Historial: ['id', 'entidad', 'entidadId', 'estado', 'fecha', 'usuario', 'nota', 'registrado'],
   Archivos: ['id', 'entidad', 'entidadId', 'driveId', 'nombre', 'mime', 'bytes', 'principal', 'subidoPor', 'fecha', 'color'],
-  Proyecciones: ['id', 'nombre', 'inicio', 'diasFabricacion', 'diasTransito', 'pausas', 'finFabricacion', 'llegada', 'notas', 'activo'],
+  Proyecciones: ['id', 'nombre', 'inicio', 'diasFabricacion', 'diasTransito', 'pausas', 'finFabricacion', 'llegada', 'notas', 'activo',
+                 'modo', 'fechaBase'],
   Config: ['clave', 'valor']
 };
 
@@ -120,10 +121,13 @@ var CATALOGOS = {
   // Proyecciones de entrega guardadas (con los datos y las fechas del momento en que se calcularon).
   proyecciones: {
     hoja: 'Proyecciones', etiqueta: 'proyección',
-    campos: { nombre: 80, inicio: 10, diasFabricacion: 4, diasTransito: 4, pausas: 2000, finFabricacion: 10, llegada: 10, notas: 1000 },
+    campos: { nombre: 80, inicio: 10, diasFabricacion: 4, diasTransito: 4, pausas: 2000, finFabricacion: 10, llegada: 10, notas: 1000,
+              modo: 10, fechaBase: 10 },
     usadoEn: [],
     normalizar: function (obj) {
-      ['inicio', 'finFabricacion', 'llegada'].forEach(function (k) { obj[k] = fechaDia_(obj[k], k); });
+      ['inicio', 'finFabricacion', 'llegada', 'fechaBase'].forEach(function (k) { obj[k] = fechaDia_(obj[k], k); });
+      // «inicio»: se partió de la fecha de inicio; «final»: de la llegada deseada y se calculó hasta cuándo se puede empezar.
+      if (obj.modo !== 'inicio' && obj.modo !== 'final') throw new Error('El modo de cálculo no es válido.');
       ['diasFabricacion', 'diasTransito'].forEach(function (k) {
         var n = Math.floor(Number(obj[k]));
         if (!(n >= 0 && n <= 2000)) throw new Error('Los días de plazo no son válidos.');
@@ -413,6 +417,7 @@ function handleGuardarCatalogo_(body) {
   if (!obj.nombre) throw new Error('El nombre es obligatorio.');
   if (c.normalizar) c.normalizar(obj);
   var id = String(body.id || '').trim();
+  var idFinal = id;
 
   conLock_([body.tabla], function () {
     var t = leer_(c.hoja);
@@ -429,10 +434,11 @@ function handleGuardarCatalogo_(body) {
       escribir_(c.hoja, actual);
     } else {
       obj.id = nuevoId_();
+      idFinal = obj.id;
       agregar_(c.hoja, obj);
     }
   });
-  return jsonOut_({ ok: true });
+  return jsonOut_({ ok: true, id: idFinal });
 }
 
 function handleBorrarCatalogo_(body) {
@@ -1600,11 +1606,17 @@ function pausasConfig_(texto) {
   try { lista = JSON.parse(String(texto || '[]')); } catch (e) { throw new Error('Las pausas no tienen un formato válido.'); }
   if (!Array.isArray(lista)) throw new Error('Las pausas no tienen un formato válido.');
   if (lista.length > 40) throw new Error('Hay demasiadas pausas.');
+  var anios = {};
   var limpias = lista.map(function (p) {
     var desde = fechaDia_(p && p.desde, 'desde');
     var hasta = fechaDia_(p && p.hasta, 'hasta');
     if (desde > hasta) throw new Error('Una pausa termina antes de empezar.');
-    return { desde: desde, hasta: hasta };
+    // Cada año tiene su propia pausa; sin año explícito se toma el de la fecha de inicio.
+    var anio = Math.floor(Number(p && p.anio)) || Number(desde.slice(0, 4));
+    if (!(anio >= 2000 && anio <= 2100)) throw new Error('El año de la pausa no es válido.');
+    if (anios[anio]) throw new Error('Hay dos pausas del año ' + anio + '. Cada año tiene una sola.');
+    anios[anio] = true;
+    return { anio: anio, desde: desde, hasta: hasta };
   });
   limpias.sort(function (a, b) { return a.desde < b.desde ? -1 : a.desde > b.desde ? 1 : 0; });
   return JSON.stringify(limpias);
@@ -1892,7 +1904,7 @@ function instalar() {
   }
   if (!cfg.pausas) {
     // Año Nuevo Chino: la fábrica para unos dos meses. Se ajusta cada año en Catálogos.
-    guardarConfig_('pausas', JSON.stringify([{ desde: '2027-01-01', hasta: '2027-02-28' }]));
+    guardarConfig_('pausas', JSON.stringify([{ anio: 2027, desde: '2027-01-01', hasta: '2027-02-28' }]));
     mensaje += 'Pausa de fábrica inicial: 01/01/2027 al 28/02/2027 (ajústala en Catálogos). ';
   }
   var carpetaOk = false;

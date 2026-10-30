@@ -6,8 +6,9 @@
  */
 import type { Config } from './tipos'
 
-/** Rango de días en que la fábrica no produce, ambos extremos incluidos. */
+/** Rango de días en que la fábrica no produce, ambos extremos incluidos. Cada año tiene su propia pausa. */
 export interface Pausa {
+  anio: number
   desde: string
   hasta: string
 }
@@ -36,14 +37,17 @@ export function deDia(dia: number): string {
   return new Date(dia * MS_DIA).toISOString().slice(0, 10)
 }
 
-/** Pausas guardadas (texto JSON); ignora lo que no tenga el formato esperado y ordena por fecha. */
+/** Pausas guardadas (texto JSON); ignora lo que no tenga el formato esperado y ordena por fecha. Sin año, toma el de la fecha de inicio. */
 export function pausasDe(texto: string | undefined | null): Pausa[] {
   if (!texto) return []
   try {
     const lista: unknown = JSON.parse(texto)
     if (!Array.isArray(lista)) return []
     return lista
-      .map((p: Partial<Pausa>) => ({ desde: String(p?.desde ?? ''), hasta: String(p?.hasta ?? '') }))
+      .map((p: Partial<Pausa>) => {
+        const desde = String(p?.desde ?? '')
+        return { anio: Number(p?.anio) || Number(desde.slice(0, 4)) || 0, desde, hasta: String(p?.hasta ?? '') }
+      })
       .filter((p) => {
         const a = aDia(p.desde)
         const b = aDia(p.hasta)
@@ -112,6 +116,27 @@ export function proyectar(inicio: string, diasFabricacion: number, diasTransito:
   }
 }
 
+/** Meses en que suele caer la pausa del Año Nuevo Chino; solo para avisar si falta cargarla. */
+const VENTANA_PAUSA = { desde: '01-01', hasta: '02-28' } as const
+
+/**
+ * Años cuya pausa (Año Nuevo Chino, entre enero y febrero) afectaría a la fabricación entre las dos fechas
+ * pero todavía no está cargada. Sirve para avisar que la proyección no la está descontando.
+ */
+export function aniosSinPausa(inicio: string, fin: string, pausas: Pausa[]): number[] {
+  const a = aDia(inicio)
+  const b = aDia(fin)
+  if (a === null || b === null) return []
+  const faltan: number[] = []
+  for (let anio = Number(inicio.slice(0, 4)); anio <= Number(fin.slice(0, 4)); anio++) {
+    const ventanaDesde = aDia(`${anio}-${VENTANA_PAUSA.desde}`)!
+    const ventanaHasta = aDia(`${anio}-${VENTANA_PAUSA.hasta}`)!
+    if (b < ventanaDesde || a > ventanaHasta) continue
+    if (!pausas.some((p) => p.anio === anio)) faltan.push(anio)
+  }
+  return faltan
+}
+
 /** Meses (año, mes 0-11) que cubre la proyección, del primero al último. */
 export function mesesDe(p: Proyeccion): { anio: number; mes: number }[] {
   const ini = new Date(aDia(p.inicio)! * MS_DIA)
@@ -128,6 +153,23 @@ export function mesesDe(p: Proyeccion): { anio: number; mes: number }[] {
     }
   }
   return meses
+}
+
+/**
+ * Cálculo hacia atrás: la fecha límite para empezar a fabricar (y por lo tanto para hacer el pedido) si se quiere
+ * que llegue a más tardar en `llegadaDeseada`. Devuelve la proyección que empieza ese día, o null si los datos no sirven.
+ * Si el último día de fabricación cae en una pausa, llega unos días antes de lo pedido.
+ */
+export function proyectarInverso(llegadaDeseada: string, diasFabricacion: number, diasTransito: number, pausas: Pausa[]): Proyeccion | null {
+  const llegada = aDia(llegadaDeseada)
+  if (llegada === null || !(diasFabricacion >= 1) || !(diasTransito >= 0)) return null
+  const finMaximo = llegada - Math.floor(diasTransito)
+  // Empezar un día más tarde nunca adelanta el fin, así que el primer inicio (hacia atrás) que cabe es el último posible.
+  for (let ini = finMaximo - Math.floor(diasFabricacion), vuelta = 0; vuelta < 5000; ini--, vuelta++) {
+    const p = proyectar(deDia(ini), diasFabricacion, diasTransito, pausas)
+    if (p && aDia(p.finFabricacion)! <= finMaximo) return p
+  }
+  return null
 }
 
 /** Plazos y pausas de la configuración, con los valores de siempre si todavía no se cargaron. */

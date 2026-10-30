@@ -13,7 +13,8 @@ import Pedidos from '@/pages/Pedidos'
 import PedidosCliente from '@/pages/PedidosCliente'
 import Productos from '@/pages/Productos'
 import Proveedores from '@/pages/Proveedores'
-import Proyeccion from '@/pages/Proyeccion'
+import ProyeccionDetalle from '@/pages/ProyeccionDetalle'
+import Proyecciones from '@/pages/Proyecciones'
 import Usuarios from '@/pages/Usuarios'
 
 /**
@@ -34,7 +35,8 @@ export default function App() {
         <Route path="pedidos-cliente/:id" element={<PedidoClienteDetalle />} />
         <Route path="contenedores" element={<Contenedores />} />
         <Route path="contenedores/:id" element={<ContenedorDetalle />} />
-        <Route path="proyeccion" element={<Proyeccion />} />
+        <Route path="proyeccion" element={<Proyecciones />} />
+        <Route path="proyeccion/:id" element={<ProyeccionDetalle />} />
         <Route path="productos" element={<Productos />} />
         <Route path="clientes" element={<Clientes />} />
         <Route path="proveedores" element={<Proveedores />} />

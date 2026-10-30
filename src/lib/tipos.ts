@@ -143,6 +143,10 @@ export interface ProyeccionGuardada extends ItemCatalogo {
   finFabricacion: string
   llegada: string
   notas: string
+  /** «inicio»: se partió del día de inicio; «final»: de la llegada deseada, calculando hasta cuándo se puede empezar. */
+  modo: 'inicio' | 'final'
+  /** La fecha que se indicó al crearla (inicio o llegada deseada, según el modo). */
+  fechaBase: string
 }
 
 export type NombreCatalogo = 'proveedores' | 'clientes' | 'marcas' | 'tamanos' | 'tablasPrecio' | 'proyecciones'

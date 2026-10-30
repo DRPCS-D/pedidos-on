@@ -15,9 +15,9 @@ const NAV_PRINCIPAL = [
   { to: '/pedidos', label: 'Pedidos fábrica', end: false },
   { to: '/pedidos-cliente', label: 'Pedidos cliente', end: false },
   { to: '/contenedores', label: 'Contenedores', end: false },
-  { to: '/proyeccion', label: 'Proyección', end: false },
 ]
 const NAV_MAS = [
+  { to: '/proyeccion', label: 'Proyección' },
   { to: '/productos', label: 'Productos' },
   { to: '/clientes', label: 'Clientes' },
   { to: '/proveedores', label: 'Proveedores' },

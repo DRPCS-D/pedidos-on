@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { aDia, deDia, mesesDe, pausasDe, proyectar } from './proyeccion'
+import { aDia, aniosSinPausa, deDia, mesesDe, pausasDe, proyectar, proyectarInverso } from './proyeccion'
 
-const PAUSA = [{ desde: '2027-01-01', hasta: '2027-02-28' }]
+const PAUSA = [{ anio: 2027, desde: '2027-01-01', hasta: '2027-02-28' }]
 
 describe('aDia / deDia', () => {
   it('va y vuelve', () => {
@@ -56,8 +56,8 @@ describe('proyectar', () => {
 
   it('con varias pausas las cuenta todas', () => {
     const p = proyectar('2026-12-01', 60, 0, [
-      { desde: '2026-12-20', hasta: '2026-12-31' },
-      { desde: '2027-01-10', hasta: '2027-01-14' },
+      { anio: 2026, desde: '2026-12-20', hasta: '2026-12-31' },
+      { anio: 2027, desde: '2027-01-10', hasta: '2027-01-14' },
     ])!
     expect(p.diasPausa).toBe(17)
   })
@@ -89,7 +89,51 @@ describe('pausasDe', () => {
       { desde: '2027-01-01', hasta: '2027-02-28' },
     ])
     expect(pausasDe(t).map((p) => p.desde)).toEqual(['2027-01-01', '2028-01-20'])
+    expect(pausasDe(t).map((p) => p.anio)).toEqual([2027, 2028])
     expect(pausasDe('no es json')).toEqual([])
     expect(pausasDe(undefined)).toEqual([])
+  })
+})
+
+describe('proyectarInverso', () => {
+  it('calcula hasta cuándo se puede empezar para llegar en la fecha pedida', () => {
+    const p = proyectarInverso('2027-07-12', 90, 90, PAUSA)!
+    expect(p.inicio).toBe('2026-11-15')
+    expect(p.finFabricacion).toBe('2027-04-13')
+    expect(p.llegada).toBe('2027-07-12')
+  })
+
+  it('sin pausa de por medio resta los dos plazos', () => {
+    const p = proyectarInverso('2027-03-30', 90, 90, PAUSA)!
+    expect(p.inicio).toBe('2026-10-01')
+    expect(p.llegada).toBe('2027-03-30')
+  })
+
+  it('un día más tarde ya no llega a tiempo', () => {
+    const p = proyectarInverso('2027-07-12', 90, 90, PAUSA)!
+    const tarde = proyectar('2026-11-16', 90, 90, PAUSA)!
+    expect(aDia(tarde.llegada)!).toBeGreaterThan(aDia('2027-07-12')!)
+    expect(aDia(p.llegada)!).toBeLessThanOrEqual(aDia('2027-07-12')!)
+  })
+
+  it('si la fecha pedida cae justo en la pausa, llega unos días antes', () => {
+    const p = proyectarInverso('2027-04-20', 5, 0, PAUSA)!
+    expect(aDia(p.llegada)!).toBeLessThanOrEqual(aDia('2027-04-20')!)
+    const tarde = proyectar(deDia(aDia(p.inicio)! + 1), 5, 0, PAUSA)!
+    expect(aDia(tarde.llegada)!).toBeGreaterThan(aDia('2027-04-20')!)
+  })
+
+  it('devuelve null con datos que no sirven', () => {
+    expect(proyectarInverso('', 90, 90, PAUSA)).toBeNull()
+  })
+})
+
+describe('aniosSinPausa', () => {
+  it('avisa del año que cruza la fabricación y no tiene pausa cargada', () => {
+    expect(aniosSinPausa('2027-11-15', '2028-04-01', PAUSA)).toEqual([2028])
+  })
+  it('no avisa si el año ya tiene pausa o la fabricación no toca enero ni febrero', () => {
+    expect(aniosSinPausa('2026-11-15', '2027-04-13', PAUSA)).toEqual([])
+    expect(aniosSinPausa('2027-03-10', '2027-06-01', [])).toEqual([])
   })
 })
