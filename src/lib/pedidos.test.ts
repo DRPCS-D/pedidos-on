@@ -8,6 +8,7 @@ import {
   estadosManualesPermitidos,
   pendienteLinea,
   siguienteEstadoManual,
+  totalConAjustes,
   totalesLineas,
 } from './pedidos'
 
@@ -57,6 +58,25 @@ describe('carga de pedidos', () => {
   it('suma unidades y totales', () => {
     const t = totalesLineas([linea(10, 0, 1.5, 3, 20000), linea(2, 0, 10, 20, 150000)])
     expect(t).toEqual({ unidades: 12, costo: 35, ventaUsd: 70, ventaGs: 500000 })
+  })
+})
+
+describe('totalConAjustes', () => {
+  const sin = { descuentoTipo: '' as const, descuentoValor: 0, cargos: [] }
+
+  it('sin ajustes el total es el subtotal', () => {
+    expect(totalConAjustes(1000, sin)).toEqual({ subtotal: 1000, descuento: 0, cargos: 0, total: 1000 })
+  })
+
+  it('descuento en porcentaje sobre el subtotal, y cargos después del descuento', () => {
+    const t = totalConAjustes(1000, { descuentoTipo: 'porcentaje', descuentoValor: 5, cargos: [{ concepto: 'Flete', monto: 120.5 }] })
+    expect(t).toEqual({ subtotal: 1000, descuento: 50, cargos: 120.5, total: 1070.5 })
+  })
+
+  it('descuento en monto fijo, sin pasar del subtotal', () => {
+    expect(totalConAjustes(1000, { ...sin, descuentoTipo: 'monto', descuentoValor: 80 }).total).toBe(920)
+    expect(totalConAjustes(100, { ...sin, descuentoTipo: 'monto', descuentoValor: 500 }).total).toBe(0)
+    expect(totalConAjustes(100, { ...sin, descuentoTipo: 'porcentaje', descuentoValor: 150 }).descuento).toBe(100)
   })
 })
 

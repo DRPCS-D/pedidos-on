@@ -13,7 +13,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import { usePedidos } from '@/hooks/usePedidos'
 import { formatCantidad, formatFecha, formatUsd, normalizar } from '@/lib/format'
-import { cargaDePedido, totalesLineas } from '@/lib/pedidos'
+import { cargaDePedido, totalConAjustes, totalesLineas } from '@/lib/pedidos'
 import { ESTADO_PEDIDO_LABEL, ESTADOS_PEDIDO, type EstadoPedido } from '@/lib/tipos'
 
 type FiltroEstado = EstadoPedido | 'activos' | ''
@@ -142,7 +142,7 @@ export default function Pedidos() {
                         {t.unidades > 0 ? `${formatCantidad(p.lineas.reduce((s, l) => s + l.asignado, 0))} / ${formatCantidad(t.unidades)}` : '—'}
                       </td>
                       <td className="tabular px-4 py-2.5 text-right text-foreground">{t.unidades.toLocaleString('es-PY')}</td>
-                      <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-muted-foreground">{formatUsd(t.costo)}</td>
+                      <td className="tabular whitespace-nowrap px-4 py-2.5 text-right text-muted-foreground">{formatUsd(totalConAjustes(t.costo, p).total)}</td>
                       <td className="px-4 py-2.5">
                         <span className="flex flex-wrap items-center gap-1.5">
                           <BadgeEstadoPedido estado={p.estado} />

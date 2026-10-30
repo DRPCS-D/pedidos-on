@@ -176,6 +176,14 @@ export interface LineaPedido {
   asignado: number
 }
 
+export type DescuentoTipo = '' | 'porcentaje' | 'monto'
+
+/** Gasto adicional del pedido a fábrica (flete, seguro, muestras…), en USD. */
+export interface CargoPedido {
+  concepto: string
+  monto: number
+}
+
 export interface Pedido {
   id: string
   folio: string
@@ -184,6 +192,11 @@ export interface Pedido {
   /** 'yyyy-MM-dd' */
   fechaPedido: string
   notas: string
+  /** Descuento sobre el total de costos: porcentaje (0-100) o monto en USD. */
+  descuentoTipo: DescuentoTipo
+  descuentoValor: number
+  descuentoMotivo: string
+  cargos: CargoPedido[]
   creadoPor: string
   creadoNombre: string
   fechaCreacion: string

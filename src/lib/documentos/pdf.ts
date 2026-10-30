@@ -1,6 +1,6 @@
 import type { CellDef, RowInput } from 'jspdf-autotable'
 import { formatFecha } from '@/lib/format'
-import { columnasTamano, filasDoc, nombreArchivo, type EncabezadoDoc, type FilaDoc, type LineaDoc, type OpcionesDoc } from './filas'
+import { columnasTamano, filasDoc, nombreArchivo, renglonesAjuste, type EncabezadoDoc, type FilaDoc, type LineaDoc, type OpcionesDoc } from './filas'
 
 const ent = (n: number) => n.toLocaleString('es-PY', { maximumFractionDigits: 0 })
 const usd = (n: number) => n.toLocaleString('es-PY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -204,10 +204,33 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
     },
   })
   y = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y
-  y += 7
+  y += 5
+  const limite = H - reservaFirma - piePagina - 4
+
+  // Descuento y cargos adicionales del pedido a fábrica, con el total final
+  const cierre = opc.precios === 'costo' ? renglonesAjuste(enc, filas.reduce((s, f) => s + f.precioCosto * f.cantidad, 0)) : []
+  if (cierre.length) {
+    // Cada etiqueta puede ocupar varias líneas (motivo del descuento largo).
+    const bloques = cierre.map((r) => {
+      doc.setFont('helvetica', r.fuerte ? 'bold' : 'normal').setFontSize(r.fuerte ? 10 : 9)
+      return { r, lineas: doc.splitTextToSize(r.etiqueta, W - 2 * M - 60) as string[] }
+    })
+    if (y + bloques.reduce((s, b) => s + b.lineas.length * 4.2 + 1, 0) + 2 > limite) {
+      doc.addPage()
+      y = M
+    }
+    for (const { r, lineas: ls } of bloques) {
+      doc.setFont('helvetica', r.fuerte ? 'bold' : 'normal').setFontSize(r.fuerte ? 10 : 9)
+      if (r.fuerte) doc.setDrawColor(150).setLineWidth(0.2).line(W - M - 80, y - 3.6, W - M, y - 3.6)
+      doc.text(ls, W - M - 34, y, { align: 'right' })
+      doc.text(`${r.monto < 0 ? '- ' : ''}${usd(Math.abs(r.monto))}`, W - M - 1.4, y, { align: 'right' })
+      y += ls.length * 4.2 + 1
+    }
+    doc.setFont('helvetica', 'normal')
+  }
+  y += 2
 
   // Notas y condiciones, cuidando no pisar la firma
-  const limite = H - reservaFirma - piePagina - 4
   const bloque = (titulo: string, texto: string) => {
     if (!texto.trim()) return
     doc.setFont('helvetica', 'normal').setFontSize(8.5)

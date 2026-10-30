@@ -26,6 +26,7 @@ import {
   estadosManualesPermitidos,
   siguienteEstadoManual,
   tieneCargas,
+  totalConAjustes,
   totalesLineas,
 } from '@/lib/pedidos'
 import { ESTADO_PEDIDO_LABEL, type EstadoPedido } from '@/lib/tipos'
@@ -57,6 +58,7 @@ export default function PedidoDetalle() {
   const [procesando, setProcesando] = useState(false)
 
   const t = useMemo(() => (pedido ? totalesLineas(pedido.lineas) : null), [pedido])
+  const costo = useMemo(() => totalConAjustes(t?.costo ?? 0, pedido ?? { descuentoTipo: '', descuentoValor: 0, cargos: [] }), [t, pedido])
   /** Pedidos de cliente que se abastecen de este pedido, con las unidades de cada uno. */
   const clientesDelPedido = useMemo(() => {
     if (!pedido) return []
@@ -143,6 +145,7 @@ export default function PedidoDetalle() {
                 notas: pedido.notas,
                 empresa,
                 condiciones: '',
+                ajustes: pedido,
               }}
             />
           </div>
@@ -241,6 +244,33 @@ export default function PedidoDetalle() {
             </tfoot>
           </table>
         </div>
+        {(costo.descuento > 0 || costo.cargos > 0) && (
+          <dl className="tabular ml-auto w-full max-w-sm space-y-1 border-t border-border px-5 py-3 text-sm">
+            <div className="flex justify-between text-muted-foreground">
+              <dt>Subtotal costo</dt>
+              <dd>{formatUsd(costo.subtotal)}</dd>
+            </div>
+            {costo.descuento > 0 && (
+              <div className="flex justify-between gap-4 text-muted-foreground">
+                <dt>
+                  Descuento{pedido.descuentoTipo === 'porcentaje' ? ` (${pedido.descuentoValor}%)` : ''}
+                  {pedido.descuentoMotivo && <span className="block text-xs">{pedido.descuentoMotivo}</span>}
+                </dt>
+                <dd>− {formatUsd(costo.descuento)}</dd>
+              </div>
+            )}
+            {pedido.cargos.map((c, i) => (
+              <div key={i} className="flex justify-between gap-4 text-muted-foreground">
+                <dt>{c.concepto}</dt>
+                <dd>+ {formatUsd(c.monto)}</dd>
+              </div>
+            ))}
+            <div className="flex justify-between border-t border-border pt-1 font-medium text-foreground">
+              <dt>Total a pagar a la fábrica</dt>
+              <dd>{formatUsd(costo.total)}</dd>
+            </div>
+          </dl>
+        )}
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">

@@ -43,7 +43,8 @@ var ENCABEZADOS = {
   ProductoColores: ['id', 'productoId', 'color'],
   ProductoTamanos: ['id', 'productoId', 'tamanoId'],
   Pedidos: ['id', 'folio', 'proveedorId', 'clienteId', 'estado', 'fechaPedido', 'notas',
-            'creadoPor', 'fechaCreacion', 'fechaEstado'],
+            'creadoPor', 'fechaCreacion', 'fechaEstado',
+            'descuentoTipo', 'descuentoValor', 'descuentoMotivo', 'cargos'],
   PedidoLineas: ['id', 'pedidoId', 'productoId', 'codigo', 'descripcion', 'color', 'marca', 'tamano', 'tamanoId',
                  'cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'porCaja', 'cajas'],
   Contenedores: ['id', 'numero', 'tipo', 'naviera', 'bl', 'puertoOrigen', 'puertoDestino', 'etd', 'eta',
@@ -59,7 +60,7 @@ var ENCABEZADOS = {
 };
 
 /** Columnas numéricas y de casilla: el resto se guarda como texto (formato @). */
-var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes', 'orden', 'porCaja', 'cajas'];
+var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes', 'orden', 'porCaja', 'cajas', 'descuentoValor'];
 var CASILLAS = ['activo', 'principal'];
 /** Columnas con fecha sin hora ('yyyy-MM-dd'); las demás fechas son ISO con hora. */
 var FECHAS_DIA = ['fechaPedido', 'fechaEstado', 'etd', 'eta'];
@@ -599,6 +600,7 @@ function handleListPedidos_(body) {
     x.estado = normalizarEstadoPedido_(p.estado);
     x.creadoNombre = nombreDe_(nombres, p.creadoPor);
     x.lineas = lineasPorPedido[p.id] || [];
+    x.cargos = leerCargos_(p.cargos);
     return x;
   });
   // Más recientes primero.
@@ -622,6 +624,7 @@ function handleGuardarPedido_(body) {
   var lineasIn = Array.isArray(body.lineas) ? body.lineas : [];
   if (!lineasIn.length) throw new Error('El pedido debe tener al menos un producto con cantidad.');
   var id = String(body.id || '').trim();
+  var ajustes = ajustesCosto_(body);
 
   var resultado = conLock_(['pedidos', 'historial'], function () {
     var tP = leer_('Pedidos');
@@ -635,6 +638,10 @@ function handleGuardarPedido_(body) {
       pedido.proveedorId = proveedorId;
       pedido.fechaPedido = fechaPedido;
       pedido.notas = texto_(body.notas, 2000);
+      pedido.descuentoTipo = ajustes.descuentoTipo;
+      pedido.descuentoValor = ajustes.descuentoValor;
+      pedido.descuentoMotivo = ajustes.descuentoMotivo;
+      pedido.cargos = ajustes.cargos;
       escribir_('Pedidos', pedido);
     } else {
       // El pedido nace «registrado» en la fecha en que se hizo (no después de hoy).
@@ -642,7 +649,9 @@ function handleGuardarPedido_(body) {
       pedido = {
         id: nuevoId_(), folio: siguienteFolio_(tP), proveedorId: proveedorId, clienteId: '',
         estado: 'registrado', fechaPedido: fechaPedido, notas: texto_(body.notas, 2000),
-        creadoPor: user.usuario, fechaCreacion: new Date().toISOString(), fechaEstado: desde
+        creadoPor: user.usuario, fechaCreacion: new Date().toISOString(), fechaEstado: desde,
+        descuentoTipo: ajustes.descuentoTipo, descuentoValor: ajustes.descuentoValor,
+        descuentoMotivo: ajustes.descuentoMotivo, cargos: ajustes.cargos
       };
       agregar_('Pedidos', pedido);
       agregarHistorial_('pedido', pedido.id, 'registrado', desde, user.usuario, '');
@@ -651,6 +660,35 @@ function handleGuardarPedido_(body) {
     return { id: pedido.id, folio: pedido.folio };
   });
   return jsonOut_({ ok: true, id: resultado.id, folio: resultado.folio });
+}
+
+/** Cargos adicionales guardados como JSON en una celda; vuelve a lista (vacía si el texto no sirve). */
+function leerCargos_(v) {
+  if (!v) return [];
+  try {
+    var l = JSON.parse(v);
+    return Array.isArray(l) ? l : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/** Descuento sobre el total y cargos adicionales del pedido a fábrica, validados; los cargos quedan como texto JSON. */
+function ajustesCosto_(body) {
+  var tipo = texto_(body.descuentoTipo, 12);
+  if (tipo !== 'porcentaje' && tipo !== 'monto') tipo = '';
+  var valor = tipo ? numero_(body.descuentoValor, 'El descuento') : 0;
+  if (tipo === 'porcentaje' && valor > 100) throw new Error('El descuento no puede pasar de 100%.');
+  if (!valor) tipo = '';
+  var cargos = (Array.isArray(body.cargos) ? body.cargos : []).slice(0, 20).map(function (c) {
+    return { concepto: texto_(c && c.concepto, 80), monto: numero_(c && c.monto, 'El monto del cargo') };
+  }).filter(function (c) { return c.concepto || c.monto; });
+  cargos.forEach(function (c) { if (!c.concepto) throw new Error('Indica el concepto de cada cargo adicional.'); });
+  return {
+    descuentoTipo: tipo, descuentoValor: valor,
+    descuentoMotivo: tipo ? texto_(body.descuentoMotivo, 120) : '',
+    cargos: cargos.length ? JSON.stringify(cargos) : ''
+  };
 }
 
 /** Líneas de un pedido a fábrica: no se pueden bajar de lo cargado en contenedores ni de lo asignado a clientes. */

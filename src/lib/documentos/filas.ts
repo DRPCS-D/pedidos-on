@@ -1,4 +1,5 @@
 /** Datos comunes de los documentos (PDF y Excel) de un pedido: una fila por producto y color. */
+import { totalConAjustes, type AjustesCosto } from '@/lib/pedidos'
 
 export interface LineaDoc {
   productoId: string
@@ -89,6 +90,24 @@ export interface EncabezadoDoc {
   /** Texto de la empresa (varias líneas) y condiciones, de la configuración. */
   empresa: string
   condiciones: string
+  /** Descuento y cargos del pedido a fábrica; se muestran junto a los costos. */
+  ajustes?: AjustesCosto
+}
+
+/** Renglones de cierre de un pedido a fábrica con descuento y/o cargos: subtotal, ajustes y total (USD). */
+export function renglonesAjuste(enc: EncabezadoDoc, subtotal: number): { etiqueta: string; monto: number; fuerte?: boolean }[] {
+  const a = enc.ajustes
+  if (!a) return []
+  const t = totalConAjustes(subtotal, a)
+  if (t.descuento === 0 && a.cargos.length === 0) return []
+  const r: { etiqueta: string; monto: number; fuerte?: boolean }[] = [{ etiqueta: 'Subtotal', monto: t.subtotal }]
+  if (t.descuento > 0) {
+    const detalle = [a.descuentoTipo === 'porcentaje' ? `${a.descuentoValor}%` : '', a.descuentoMotivo].filter(Boolean).join(' · ')
+    r.push({ etiqueta: detalle ? `Descuento (${detalle})` : 'Descuento', monto: -t.descuento })
+  }
+  for (const c of a.cargos) r.push({ etiqueta: c.concepto, monto: c.monto })
+  r.push({ etiqueta: 'TOTAL USD', monto: t.total, fuerte: true })
+  return r
 }
 
 export interface OpcionesDoc {

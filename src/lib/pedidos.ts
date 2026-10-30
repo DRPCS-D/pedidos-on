@@ -3,6 +3,8 @@ import {
   ESTADOS_CONTENEDOR,
   ESTADOS_PEDIDO,
   type EstadoContenedor,
+  type CargoPedido,
+  type DescuentoTipo,
   type EstadoPedido,
   type LineaPedido,
   type Pedido,
@@ -33,7 +35,30 @@ export function totalesLineas(
   return t
 }
 
-export type CargaPedido = 'sin_cargar' | 'parcial' | 'completa'
+export interface AjustesCosto {
+  descuentoTipo: DescuentoTipo
+  descuentoValor: number
+  descuentoMotivo: string
+  cargos: CargoPedido[]
+}
+
+export interface TotalCosto {
+  subtotal: number
+  /** Monto descontado en USD (nunca más que el subtotal). */
+  descuento: number
+  cargos: number
+  total: number
+}
+
+/** Costo del pedido: subtotal de las líneas, menos el descuento sobre ese subtotal, más los cargos adicionales. */
+export function totalConAjustes(subtotal: number, a: Omit<AjustesCosto, 'descuentoMotivo'>): TotalCosto {
+  const bruto = a.descuentoTipo === 'porcentaje' ? (subtotal * Math.min(a.descuentoValor, 100)) / 100 : a.descuentoTipo === 'monto' ? a.descuentoValor : 0
+  const descuento = Math.round(Math.min(Math.max(bruto, 0), subtotal) * 100) / 100
+  const cargos = Math.round(a.cargos.reduce((s, c) => s + c.monto, 0) * 100) / 100
+  return { subtotal, descuento, cargos, total: Math.round((subtotal - descuento + cargos) * 100) / 100 }
+}
+
+export type CargaPedido ='sin_cargar' | 'parcial' | 'completa'
 
 /** ¿Cuánto del pedido ya está asignado a contenedores? */
 export function cargaDePedido(p: Pick<Pedido, 'lineas'>): CargaPedido {

@@ -11,7 +11,9 @@ import { useProductos } from '@/hooks/useProductos'
 import { formatCantidad, formatUsd, hoyIso } from '@/lib/format'
 import { claveCelda } from '@/lib/grilla'
 import { pendientesDeClientes } from '@/lib/pedidoCliente'
+import { totalConAjustes } from '@/lib/pedidos'
 import type { Pedido } from '@/lib/tipos'
+import { AJUSTES_VACIOS, AjustesCostoEditor, ajustesDePedido, ajustesNumericos, type AjustesForm } from './AjustesCostoEditor'
 import {
   EditorProductos,
   lineasDeGrupos,
@@ -43,6 +45,7 @@ export function PedidoFormModal({
   const [fecha, setFecha] = useState(hoyIso())
   const [notas, setNotas] = useState('')
   const [grupos, setGrupos] = useState<GrupoForm[]>([])
+  const [ajustes, setAjustes] = useState<AjustesForm>(AJUSTES_VACIOS)
   const [asignar, setAsignar] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
@@ -57,6 +60,7 @@ export function PedidoFormModal({
         ? deLineas(pedido.lineas.map((l) => ({ ...l, comprometido: Math.max(l.cargado, l.asignado) })))
         : [],
     )
+    setAjustes(pedido ? ajustesDePedido(pedido) : AJUSTES_VACIOS)
     setAsignar(true)
     setError(null)
     // Solo al abrir o cambiar de pedido: una sincronización de fondo no debe borrar lo que se escribe.
@@ -99,6 +103,7 @@ export function PedidoFormModal({
   }
 
   const totales = totalesDeGrupos(grupos)
+  const totalCosto = totalConAjustes(totales.costo, ajustesNumericos(ajustes)).total
 
   async function onGuardar() {
     if (!proveedorId) return setError('Elige la fábrica (proveedor).')
@@ -113,6 +118,7 @@ export function PedidoFormModal({
       proveedorId,
       fechaPedido: fecha,
       notas: notas.trim(),
+      ...ajustesNumericos(ajustes),
       lineas: r.lineas,
     })
     if (err || !data) {
@@ -140,7 +146,7 @@ export function PedidoFormModal({
       footer={
         <>
           <span className="tabular mr-auto self-center text-xs text-muted-foreground">
-            {totales.unidades.toLocaleString('es-PY')} unidades · costo {formatUsd(totales.costo)}
+            {totales.unidades.toLocaleString('es-PY')} unidades · costo {formatUsd(totalCosto)}
           </span>
           <Button variant="outline" onClick={onCerrar} disabled={guardando}>
             Cancelar
@@ -192,6 +198,8 @@ export function PedidoFormModal({
           modo="fabrica"
           textoComprometido="cargados o asignados"
         />
+
+        <AjustesCostoEditor valor={ajustes} onChange={setAjustes} subtotal={totales.costo} />
 
         {!pedido && unidadesPendientes > 0 && (
           <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">

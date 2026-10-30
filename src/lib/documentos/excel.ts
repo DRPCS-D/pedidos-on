@@ -1,5 +1,5 @@
 import { formatFecha } from '@/lib/format'
-import { columnasTamano, filasDoc, nombreArchivo, type EncabezadoDoc, type LineaDoc, type OpcionesDoc } from './filas'
+import { columnasTamano, filasDoc, nombreArchivo, renglonesAjuste, type EncabezadoDoc, type LineaDoc, type OpcionesDoc } from './filas'
 
 /** Genera y descarga el Excel de un pedido (la librería se carga recién al pedirlo). */
 export async function descargarExcel(enc: EncabezadoDoc, lineas: LineaDoc[], opc: OpcionesDoc): Promise<void> {
@@ -51,6 +51,16 @@ export async function descargarExcel(enc: EncabezadoDoc, lineas: LineaDoc[], opc
   if (verUsd) total.push('', numero(filas.reduce((s, f) => s + precioUsd(f) * f.cantidad, 0), '#,##0.00', 'bold'))
   if (verGs) total.push('', numero(filas.reduce((s, f) => s + f.precioVentaGs * f.cantidad, 0), '#,##0', 'bold'))
   data.push(total)
+  if (opc.precios === 'costo') {
+    // Descuento y cargos del pedido, en la columna de subtotal USD.
+    const colSubtotal = 4 + tamanos.length + 3
+    for (const r of renglonesAjuste(enc, filas.reduce((s, f) => s + f.precioCosto * f.cantidad, 0))) {
+      const fila: unknown[] = Array(colSubtotal).fill('')
+      fila[3] = r.fuerte ? negrita(r.etiqueta) : r.etiqueta
+      fila.push(numero(r.monto, '#,##0.00', r.fuerte ? 'bold' : undefined))
+      data.push(fila)
+    }
+  }
   if (enc.notas.trim()) data.push([], [negrita('Observaciones'), enc.notas.trim()])
   if (opc.condiciones && enc.condiciones.trim()) data.push([], [negrita('Condiciones'), enc.condiciones.trim()])
 

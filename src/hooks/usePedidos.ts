@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { ejecutar, ejecutarConDatos } from '@/lib/ejecutar'
 import { TABLAS } from '@/lib/tablas'
-import type { EstadoPedido, Pedido } from '@/lib/tipos'
+import type { CargoPedido, DescuentoTipo, EstadoPedido, Pedido } from '@/lib/tipos'
 import { useTabla } from './useTabla'
 
 export interface DatosLinea {
@@ -24,6 +24,10 @@ export interface DatosPedido {
   proveedorId: string
   fechaPedido: string
   notas: string
+  descuentoTipo: DescuentoTipo
+  descuentoValor: number
+  descuentoMotivo: string
+  cargos: CargoPedido[]
   lineas: DatosLinea[]
 }
 
