@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { ejecutar, ejecutarConDatos } from '@/lib/ejecutar'
-import { TABLAS } from '@/lib/tablas'
+import { quitarDeLista } from '@/lib/parches'
+import { TABLAS, parchearTabla } from '@/lib/tablas'
 import type { Producto } from '@/lib/tipos'
 import { useTabla } from './useTabla'
 
@@ -26,7 +27,11 @@ export function useProductos() {
   /** Devuelve el id (nuevo o existente) para poder subir la foto enseguida. */
   const guardar = (id: string | null, datos: DatosProducto) =>
     ejecutarConDatos<{ id: string }>('guardarProducto', { id: id ?? '', datos }, 'No se pudo guardar el producto.')
-  const borrar = (id: string) => ejecutar('borrarProducto', { id }, 'No se pudo borrar el producto.')
+  const borrar = async (id: string) => {
+    const r = await ejecutar('borrarProducto', { id }, 'No se pudo borrar el producto.')
+    if (!r.error) parchearTabla(TABLAS.productos, {}, (lista) => quitarDeLista(lista as { id: string }[], id))
+    return r
+  }
 
   return { ...lista, porId, guardar, borrar }
 }

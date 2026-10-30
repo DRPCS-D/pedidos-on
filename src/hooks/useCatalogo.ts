@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
-import { ejecutar } from '@/lib/ejecutar'
-import { TABLAS } from '@/lib/tablas'
+import { ejecutarConDatos } from '@/lib/ejecutar'
+import { guardarEnLista, quitarDeLista } from '@/lib/parches'
+import { TABLAS, parchearTabla } from '@/lib/tablas'
 import type { Cliente, ItemCatalogo, NombreCatalogo, Proveedor, ProyeccionGuardada, TablaPrecio, Tamano } from '@/lib/tipos'
 import { useTabla } from './useTabla'
 
@@ -35,10 +36,17 @@ export function useCatalogo<N extends NombreCatalogo>(tabla: N) {
     [lista.data],
   )
 
-  const guardar = (id: string | null, datos: Record<string, unknown>) =>
-    ejecutar('guardarCatalogo', { tabla, id: id ?? '', datos }, `No se pudo guardar el ${ETIQUETA[tabla]}.`)
-  const borrar = (id: string) =>
-    ejecutar('borrarCatalogo', { tabla, id }, `No se pudo borrar el ${ETIQUETA[tabla]}.`)
+  // Al confirmarse la escritura la lista cambia al instante; la descarga que sigue trae la versión definitiva.
+  const guardar = async (id: string | null, datos: Record<string, unknown>) => {
+    const r = await ejecutarConDatos<{ id?: string }>('guardarCatalogo', { tabla, id: id ?? '', datos }, `No se pudo guardar el ${ETIQUETA[tabla]}.`)
+    if (!r.error) parchearTabla(TABLAS[tabla], { tabla }, (lista) => guardarEnLista(lista as { id: string }[], id || r.data?.id, datos))
+    return { error: r.error }
+  }
+  const borrar = async (id: string) => {
+    const r = await ejecutarConDatos('borrarCatalogo', { tabla, id }, `No se pudo borrar el ${ETIQUETA[tabla]}.`)
+    if (!r.error) parchearTabla(TABLAS[tabla], { tabla }, (lista) => quitarDeLista(lista as { id: string }[], id))
+    return { error: r.error }
+  }
 
   return { ...lista, nombres, guardar, borrar }
 }

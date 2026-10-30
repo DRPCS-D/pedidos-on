@@ -22,6 +22,16 @@ export function onSesionInvalida(manejador: () => void): () => void {
 }
 
 /**
+ * A quién pasarle los contadores de revisión que el backend adjunta a las respuestas de escritura
+ * (lo escucha la caché de tablas para refrescar sin preguntarlos otra vez).
+ */
+let alRecibirRevisiones: ((revisiones: Record<string, number>) => void) | null = null
+
+export function onRevisionesRecibidas(manejador: (revisiones: Record<string, number>) => void) {
+  alRecibirRevisiones = manejador
+}
+
+/**
  * ¿El error es "tus credenciales ya no sirven"? El backend manda
  * `codigo: 'SESION'`; el match por texto es el respaldo para una
  * implementación de Apps Script todavía sin actualizar.
@@ -76,13 +86,15 @@ export async function callApi<T = Record<string, unknown>>(
     throw new Error('La respuesta del servidor no es válida.')
   }
 
-  const obj = data as { ok?: boolean; error?: string; codigo?: string } | null
+  const obj = data as { ok?: boolean; error?: string; codigo?: string; revisiones?: Record<string, number> } | null
   if (!obj || obj.ok !== true) {
     // En 'login' un rechazo es simplemente una contraseña mal escrita, no una
     // sesión caída: ahí no hay nada que cerrar.
     if (action !== 'login' && esSesionInvalida(obj?.codigo, obj?.error)) alPerderSesion?.()
     throw new Error(obj?.error || 'Error desconocido del servidor.')
   }
+  // Solo en escrituras: la acción `getRevisions` la responde la propia caché y no debe reciclarse a sí misma.
+  if (action !== 'getRevisions' && obj.revisiones && typeof obj.revisiones === 'object') alRecibirRevisiones?.(obj.revisiones)
   return obj as T
 }
 

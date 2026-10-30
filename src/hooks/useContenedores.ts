@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { ejecutar, ejecutarConDatos } from '@/lib/ejecutar'
-import { TABLAS } from '@/lib/tablas'
+import { quitarDeLista } from '@/lib/parches'
+import { TABLAS, parchearTabla } from '@/lib/tablas'
 import type { Contenedor, EstadoContenedor, TipoContenedor } from '@/lib/tipos'
 import { useTabla } from './useTabla'
 
@@ -32,7 +33,11 @@ export function useContenedores() {
     ejecutar('guardarCargas', { contenedorId, cargas }, 'No se pudo guardar la carga.')
   const cambiarEstado = (id: string, estado: EstadoContenedor, fecha: string, nota: string) =>
     ejecutar('cambiarEstadoContenedor', { id, estado, fecha, nota }, 'No se pudo cambiar el estado.')
-  const borrar = (id: string) => ejecutar('borrarContenedor', { id }, 'No se pudo borrar el contenedor.')
+  const borrar = async (id: string) => {
+    const r = await ejecutar('borrarContenedor', { id }, 'No se pudo borrar el contenedor.')
+    if (!r.error) parchearTabla(TABLAS.contenedores, {}, (lista) => quitarDeLista(lista as { id: string }[], id))
+    return r
+  }
   const deshacerEstado = (id: string) =>
     ejecutar('deshacerEstado', { entidad: 'contenedor', id }, 'No se pudo deshacer el cambio.')
 

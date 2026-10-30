@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { ejecutar, ejecutarConDatos } from '@/lib/ejecutar'
-import { TABLAS } from '@/lib/tablas'
+import { quitarDeLista } from '@/lib/parches'
+import { TABLAS, parchearTabla } from '@/lib/tablas'
 import type { EstadoPedidoCliente, PedidoCliente } from '@/lib/tipos'
 import type { DatosLinea } from './usePedidos'
 import { useTabla } from './useTabla'
@@ -39,7 +40,11 @@ export function usePedidosCliente() {
     ejecutarConDatos<{ asignado: number }>('asignarAutomatico', { pcId: pcId ?? '' }, 'No se pudo asignar.')
   const cambiarEstado = (id: string, estado: EstadoPedidoCliente, fecha: string, nota: string) =>
     ejecutar('cambiarEstadoPedidoCliente', { id, estado, fecha, nota }, 'No se pudo cambiar el estado.')
-  const borrar = (id: string) => ejecutar('borrarPedidoCliente', { id }, 'No se pudo borrar el pedido.')
+  const borrar = async (id: string) => {
+    const r = await ejecutar('borrarPedidoCliente', { id }, 'No se pudo borrar el pedido.')
+    if (!r.error) parchearTabla(TABLAS.pedidosCliente, {}, (lista) => quitarDeLista(lista as { id: string }[], id))
+    return r
+  }
   const deshacerEstado = (id: string) =>
     ejecutar('deshacerEstado', { entidad: 'pedidoCliente', id }, 'No se pudo deshacer el cambio.')
 

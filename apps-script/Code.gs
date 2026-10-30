@@ -143,6 +143,9 @@ var REVISIONES = ['usuarios', 'proveedores', 'clientes', 'marcas', 'tamanos', 'p
 
 // ---------- Entrada ----------
 
+/** En las acciones de escritura la respuesta lleva los contadores de revisión (ver jsonOut_). */
+var ADJUNTAR_REVISIONES_ = false;
+
 function doGet() {
   return jsonOut_({ ok: true, service: 'pedidos-on' });
 }
@@ -154,6 +157,9 @@ function doPost(e) {
   } catch (err) {
     return jsonOut_({ ok: false, error: 'Solicitud inválida' });
   }
+
+  // Las lecturas (list*, get*, login, fotos*) no llevan contadores; todo lo demás sí, para que el frontend no tenga que preguntarlos.
+  ADJUNTAR_REVISIONES_ = !/^(list|get|login|fotos)/i.test(String(body.action || ''));
 
   try {
     switch (body.action) {
@@ -257,12 +263,16 @@ function bumpRevision_(key) {
   props.setProperty('rev_' + key, String(actual + 1));
 }
 
-function handleGetRevisions_(body) {
-  requireAuth_(body);
+function revisionesActuales_() {
   var props = PropertiesService.getScriptProperties().getProperties();
   var revisiones = {};
   REVISIONES.forEach(function (k) { revisiones[k] = Number(props['rev_' + k]) || 0; });
-  return jsonOut_({ ok: true, revisiones: revisiones });
+  return revisiones;
+}
+
+function handleGetRevisions_(body) {
+  requireAuth_(body);
+  return jsonOut_({ ok: true, revisiones: revisionesActuales_() });
 }
 
 /** Ejecuta `fn` con el lock del script tomado y sube las revisiones indicadas. */
@@ -2143,5 +2153,7 @@ function esActivo_(valor) {
 }
 
 function jsonOut_(obj) {
+  // Tras una escritura que salió bien se devuelven los contadores ya incrementados: el frontend refresca sin pedirlos antes.
+  if (ADJUNTAR_REVISIONES_ && obj && obj.ok === true && !obj.revisiones) obj.revisiones = revisionesActuales_();
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
