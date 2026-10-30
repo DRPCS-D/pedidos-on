@@ -7,7 +7,8 @@ import { Modal } from '@/components/ui/modal'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import { useProductos } from '@/hooks/useProductos'
 import { ejecutarConDatos } from '@/lib/ejecutar'
-import type { EncabezadoDoc, LineaDoc, MonedaDoc } from '@/lib/documentos/filas'
+import { claveFoto, type EncabezadoDoc, type LineaDoc, type MonedaDoc } from '@/lib/documentos/filas'
+import { fotoDeColor } from '@/lib/fotos'
 
 type Formato = 'pdf' | 'xlsx'
 
@@ -33,12 +34,12 @@ export function DescargarDocumento({
   const { data: catalogoTamanos } = useCatalogo('tamanos')
   const { porId: productos } = useProductos()
 
-  /** Fotos principales de los productos del pedido, como data URL (el PDF no puede leerlas de Drive directamente). */
+  /** Foto de cada producto y color del pedido, como data URL (el PDF no puede leerlas de Drive directamente). */
   async function cargarFotos(): Promise<Map<string, string>> {
     const porDrive = new Map<string, string[]>()
     for (const l of lineas) {
-      const id = productos.get(l.productoId)?.fotoId
-      if (id) porDrive.set(id, [...new Set([...(porDrive.get(id) ?? []), l.productoId])])
+      const id = fotoDeColor(productos.get(l.productoId), l.color)
+      if (id) porDrive.set(id, [...new Set([...(porDrive.get(id) ?? []), claveFoto(l.productoId, l.color)])])
     }
     const resultado = new Map<string, string>()
     if (porDrive.size === 0) return resultado
@@ -48,7 +49,7 @@ export function DescargarDocumento({
       'No se pudieron cargar las fotos.',
     )
     for (const [driveId, f] of Object.entries(data?.fotos ?? {})) {
-      for (const productoId of porDrive.get(driveId) ?? []) resultado.set(productoId, `data:${f.mime};base64,${f.data}`)
+      for (const clave of porDrive.get(driveId) ?? []) resultado.set(clave, `data:${f.mime};base64,${f.data}`)
     }
     return resultado
   }

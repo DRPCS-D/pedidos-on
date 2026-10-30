@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Adjuntos } from '@/components/archivos/Adjuntos'
+import { FotoColor } from '@/components/productos/FotoColor'
 import { CambiosPrecio } from '@/components/pedidos/CambiosPrecio'
 import { BadgeCarga, BadgeEstadoContenedor, BadgeEstadoPedido } from '@/components/pedidos/badges'
 import { CambiarEstadoModal } from '@/components/pedidos/CambiarEstadoModal'
@@ -212,7 +213,12 @@ export default function PedidoDetalle() {
                 <tr key={g.clave} title={g.tamanos || undefined} className="border-b border-border last:border-0">
                   <td className="whitespace-nowrap px-4 py-2.5 font-medium text-foreground">{l.codigo}</td>
                   <td className="px-4 py-2.5 text-foreground">{l.descripcion}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{l.color || '—'}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">
+                    <span className="flex items-center gap-2">
+                      <FotoColor productoId={l.productoId} color={l.color} />
+                      {l.color || '—'}
+                    </span>
+                  </td>
                   <td className="px-4 py-2.5 text-muted-foreground">{l.marca || '—'}</td>
                   <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{g.cajas > 0 ? formatCantidad(g.porCaja) : '—'}</td>
                   <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{g.cajas > 0 ? formatCantidad(g.cajas) : '—'}</td>

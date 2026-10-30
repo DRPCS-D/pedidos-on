@@ -58,7 +58,7 @@ var ENCABEZADOS = {
              'cantidad', 'precioVentaUsd', 'precioVentaGs', 'porCaja', 'cajas'],
   Asignaciones: ['id', 'pcLineaId', 'lineaId', 'cantidad'],
   Historial: ['id', 'entidad', 'entidadId', 'estado', 'fecha', 'usuario', 'nota', 'registrado'],
-  Archivos: ['id', 'entidad', 'entidadId', 'driveId', 'nombre', 'mime', 'bytes', 'principal', 'subidoPor', 'fecha'],
+  Archivos: ['id', 'entidad', 'entidadId', 'driveId', 'nombre', 'mime', 'bytes', 'principal', 'subidoPor', 'fecha', 'color'],
   Config: ['clave', 'valor']
 };
 
@@ -486,18 +486,24 @@ function variantesPorProducto_(hoja, col) {
 
 function handleListProductos_(body) {
   requireAuth_(body);
-  // Foto principal de cada producto (o la primera imagen si no se marcó ninguna).
+  // Fotos de cada producto: la general (sin color) y la de cada color; en cada grupo, la principal o la primera.
   var fotos = {};
   leer_('Archivos').filas.forEach(function (a) {
     if (a.entidad !== 'producto' || a.mime.indexOf('image/') !== 0) return;
-    if (!fotos[a.entidadId] || a.principal) fotos[a.entidadId] = a.driveId;
+    var grupo = fotos[a.entidadId] = fotos[a.entidadId] || {};
+    if (!grupo[a.color] || a.principal) grupo[a.color] = a.driveId;
   });
   var colores = variantesPorProducto_('ProductoColores', 'color');
   var tamanos = variantesPorProducto_('ProductoTamanos', 'tamanoId');
   var pos = posicionTamanos_();
   var lista = leer_('Productos').filas.filter(function (p) { return p.id; }).map(function (p) {
     var x = limpiar_(p);
-    x.fotoId = fotos[p.id] || '';
+    var deProducto = fotos[p.id] || {};
+    var porColor = {};
+    Object.keys(deProducto).forEach(function (c) { if (c) porColor[c] = deProducto[c]; });
+    x.fotosColor = porColor;
+    // La foto general; si no hay, la de algún color (para que el producto siempre muestre una).
+    x.fotoId = deProducto[''] || deProducto[Object.keys(porColor)[0]] || '';
     x.colores = colores[p.id] || [];
     x.tamanoIds = (tamanos[p.id] || []).slice().sort(function (a, b) { return (pos[a] || 0) - (pos[b] || 0); });
     return x;
@@ -576,7 +582,7 @@ function handleGuardarProducto_(body) {
   var tamanoIds = listaTamanos_(d.tamanoIds);
   var id = String(body.id || '').trim();
 
-  var final = conLock_(['productos'], function () {
+  var final = conLock_(['productos', 'archivos'], function () {
     var t = leer_('Productos');
     var repetido = t.filas.filter(function (p) {
       return p.id !== id && p.codigo.toUpperCase() === obj.codigo.toUpperCase();
@@ -594,9 +600,37 @@ function handleGuardarProducto_(body) {
     }
     sincronizarVariantes_('ProductoColores', 'color', productoId, colores);
     sincronizarVariantes_('ProductoTamanos', 'tamanoId', productoId, tamanoIds);
+    reubicarFotosColor_(productoId);
     return productoId;
   });
   return jsonOut_({ ok: true, id: final });
+}
+
+/**
+ * Las fotos de un color que el producto ya no tiene pasan a ser generales (sin color), para que no queden
+ * huérfanas; si solo cambió la mayúscula del nombre, siguen con su color. Cuida que haya una sola principal general.
+ */
+function reubicarFotosColor_(productoId) {
+  var vigentes = {};
+  (variantesPorProducto_('ProductoColores', 'color')[productoId] || []).forEach(function (c) { vigentes[c.toUpperCase()] = c; });
+  var fotos = leer_('Archivos').filas.filter(function (a) { return a.entidad === 'producto' && a.entidadId === productoId && a.color; });
+  var hayPrincipalGeneral = leer_('Archivos').filas.some(function (a) {
+    return a.entidad === 'producto' && a.entidadId === productoId && !a.color && a.principal;
+  });
+  fotos.forEach(function (a) {
+    var actual = vigentes[a.color.toUpperCase()];
+    if (actual === a.color) return;
+    if (actual) {
+      a.color = actual;
+    } else {
+      a.color = '';
+      if (a.principal) {
+        if (hayPrincipalGeneral) a.principal = false;
+        else hayPrincipalGeneral = true;
+      }
+    }
+    escribir_('Archivos', a);
+  });
 }
 
 function handleBorrarProducto_(body) {
@@ -1629,6 +1663,10 @@ function handleSubirArchivo_(body) {
   var registro = buscar_(leer_(ENTIDADES_ARCHIVO[entidad]), 'id', entidadId);
   if (!registro) throw new Error('El registro ya no existe.');
 
+  // Una foto de producto puede pertenecer a uno de sus colores (vacío = general).
+  var color = '';
+  if (entidad === 'producto' && body.color) color = colorDelProducto_(entidadId, texto_(body.color, 40));
+
   var nombre = texto_(body.nombre, 150).replace(/[\\/]/g, '-') || 'archivo';
   var mime = texto_(body.mime, 100) || 'application/octet-stream';
   var bytes = Utilities.base64Decode(String(body.base64 || ''));
@@ -1649,15 +1687,23 @@ function handleSubirArchivo_(body) {
   conLock_(revs, function () {
     var esImagen = mime.indexOf('image/') === 0;
     var yaHayPrincipal = leer_('Archivos').filas.some(function (a) {
-      return a.entidad === entidad && a.entidadId === entidadId && a.principal;
+      return a.entidad === entidad && a.entidadId === entidadId && a.principal && a.color === color;
     });
     agregar_('Archivos', {
       id: nuevoId_(), entidad: entidad, entidadId: entidadId, driveId: archivo.getId(), nombre: nombre,
       mime: mime, bytes: bytes.length, principal: entidad === 'producto' && esImagen && !yaHayPrincipal,
-      subidoPor: user.usuario, fecha: new Date().toISOString()
+      subidoPor: user.usuario, fecha: new Date().toISOString(), color: color
     });
   });
   return jsonOut_({ ok: true, driveId: archivo.getId() });
+}
+
+/** Nombre del color tal como lo tiene el producto; error si el producto no tiene ese color. */
+function colorDelProducto_(productoId, color) {
+  var colores = variantesPorProducto_('ProductoColores', 'color')[productoId] || [];
+  var igual = colores.filter(function (c) { return c.toUpperCase() === color.toUpperCase(); })[0];
+  if (!igual) throw new Error('El producto no tiene el color «' + color + '». Guarda el producto con ese color primero.');
+  return igual;
 }
 
 function handleMarcarPrincipal_(body) {
@@ -1668,7 +1714,8 @@ function handleMarcarPrincipal_(body) {
     if (!a) throw new Error('El archivo ya no existe.');
     if (a.entidad !== 'producto' || a.mime.indexOf('image/') !== 0) throw new Error('Solo una foto de producto puede ser la principal.');
     t.filas.forEach(function (x) {
-      if (x.entidad !== a.entidad || x.entidadId !== a.entidadId) return;
+      // Hay una principal por color (y una general): solo compiten las fotos del mismo color.
+      if (x.entidad !== a.entidad || x.entidadId !== a.entidadId || x.color !== a.color) return;
       var debe = x.id === a.id;
       if (x.principal !== debe) {
         x.principal = debe;

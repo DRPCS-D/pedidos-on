@@ -409,7 +409,7 @@ export function ProductoFormModal({
 
       <div className="mt-5 border-t border-border pt-4">
         <h3 className="mb-2 text-sm font-semibold text-foreground">Fotos</h3>
-        <Adjuntos entidad="producto" id={idActual} puedeEditar={puedeEditar} />
+        <Adjuntos entidad="producto" id={idActual} puedeEditar={puedeEditar} colores={producto?.colores ?? f.colores} />
       </div>
     </Modal>
   )

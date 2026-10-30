@@ -7,6 +7,7 @@ import { ContenedorFormModal } from '@/components/contenedores/ContenedorFormMod
 import { BadgeEstadoContenedor, BadgeEstadoPedido } from '@/components/pedidos/badges'
 import { CambiarEstadoModal } from '@/components/pedidos/CambiarEstadoModal'
 import { LineaDeTiempo } from '@/components/pedidos/LineaDeTiempo'
+import { FotoColor } from '@/components/productos/FotoColor'
 import { Button } from '@/components/ui/button'
 import { ErrorBox, Vacio } from '@/components/ui/estado'
 import { ConfirmModal } from '@/components/ui/modal'
@@ -26,12 +27,14 @@ import {
 
 /** Junta las cargas de un pedido por producto y color (una fila por color, con los tamaños sumados). */
 function porColor(pedido: Pedido | undefined, cargas: { lineaId: string; cantidad: number }[]) {
-  const grupos = new Map<string, { clave: string; codigo: string; texto: string; cargado: number; total: number; detalle: string[] }>()
+  const grupos = new Map<string, { clave: string; productoId: string; color: string; codigo: string; texto: string; cargado: number; total: number; detalle: string[] }>()
   for (const { lineaId, cantidad } of cargas) {
     const l = pedido?.lineas.find((x) => x.id === lineaId)
     const clave = l ? `${l.productoId}|${l.color}` : lineaId
     const g = grupos.get(clave) ?? {
       clave,
+      productoId: l?.productoId ?? '',
+      color: l?.color ?? '',
       codigo: l?.codigo ?? '—',
       texto: l ? [l.descripcion, l.color].filter(Boolean).join(' · ') : '',
       cargado: 0,
@@ -212,7 +215,12 @@ export default function ContenedorDetalle() {
                     <tbody>
                       {porColor(p, lineas).map((g) => (
                         <tr key={g.clave} title={g.detalle || undefined} className="border-t border-border first:border-0">
-                          <td className="whitespace-nowrap px-5 py-2 font-medium text-foreground">{g.codigo}</td>
+                          <td className="whitespace-nowrap px-5 py-2 font-medium text-foreground">
+                            <span className="flex items-center gap-2">
+                              {g.productoId && <FotoColor productoId={g.productoId} color={g.color} />}
+                              {g.codigo}
+                            </span>
+                          </td>
                           <td className="px-3 py-2 text-muted-foreground">{g.texto}</td>
                           <td className="tabular px-5 py-2 text-right text-foreground">
                             {formatCantidad(g.cargado)}

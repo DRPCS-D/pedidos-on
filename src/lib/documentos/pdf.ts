@@ -1,6 +1,6 @@
 import type { CellDef, RowInput } from 'jspdf-autotable'
 import { formatFecha } from '@/lib/format'
-import { columnasTamano, filasDoc, nombreArchivo, renglonesAjuste, type EncabezadoDoc, type FilaDoc, type LineaDoc, type OpcionesDoc } from './filas'
+import { claveFoto, columnasTamano, filasDoc, nombreArchivo, renglonesAjuste, type EncabezadoDoc, type FilaDoc, type LineaDoc, type OpcionesDoc } from './filas'
 
 const ent = (n: number) => n.toLocaleString('es-PY', { maximumFractionDigits: 0 })
 const usd = (n: number) => n.toLocaleString('es-PY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -47,7 +47,7 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
 
   const filas = filasDoc(lineas)
   const tamanos = columnasTamano(lineas, opc.ordenTamanos)
-  const fotos = opc.fotos && [...opc.fotos.keys()].some((id) => filas.some((f) => f.productoId === id)) ? opc.fotos : null
+  const fotos = opc.fotos && filas.some((f) => opc.fotos?.has(claveFoto(f.productoId, f.color))) ? opc.fotos : null
   const verUsd = opc.precios !== 'ninguno' && (opc.precios === 'costo' || opc.moneda !== 'gs')
   const verGs = opc.precios === 'venta' && opc.moneda !== 'usd'
   const horizontal = verUsd && verGs
@@ -172,7 +172,7 @@ export async function descargarPdf(enc: EncabezadoDoc, lineas: LineaDoc[], opc: 
       // Foto del producto
       const fila = filaDeIndice.get(d.row.index)
       if (hayFotos && fila && d.column.index === 0) {
-        const url = fotos.get(fila.productoId)
+        const url = fotos.get(claveFoto(fila.productoId, fila.color))
         if (url) {
           try {
             const p = doc.getImageProperties(url)

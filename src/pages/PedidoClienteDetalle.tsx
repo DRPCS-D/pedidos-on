@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { BadgeEstadoPedido } from '@/components/pedidos/badges'
 import { CambiarEstadoModal } from '@/components/pedidos/CambiarEstadoModal'
+import { FotoColor } from '@/components/productos/FotoColor'
 import { CambiosPrecio } from '@/components/pedidos/CambiosPrecio'
 import { LineaDeTiempo } from '@/components/pedidos/LineaDeTiempo'
 import { AsignarModal } from '@/components/pedidosCliente/AsignarModal'
@@ -200,7 +201,12 @@ export default function PedidoClienteDetalle() {
                 <tr key={g.clave} title={g.tamanos || undefined} className="border-b border-border last:border-0">
                   <td className="whitespace-nowrap px-4 py-2.5 font-medium text-foreground">{l.codigo}</td>
                   <td className="px-4 py-2.5 text-foreground">{l.descripcion}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{l.color || '—'}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">
+                    <span className="flex items-center gap-2">
+                      <FotoColor productoId={l.productoId} color={l.color} />
+                      {l.color || '—'}
+                    </span>
+                  </td>
                   <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{g.cajas > 0 ? formatCantidad(g.porCaja) : '—'}</td>
                   <td className="tabular px-4 py-2.5 text-right text-muted-foreground">{g.cajas > 0 ? formatCantidad(g.cajas) : '—'}</td>
                   <td className="tabular px-4 py-2.5 text-right text-foreground">{formatCantidad(g.cantidad)}</td>

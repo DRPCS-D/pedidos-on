@@ -10,8 +10,8 @@ export const MAX_ARCHIVO_BYTES = 10 * 1024 * 1024
 export function useArchivos(entidad: 'producto' | 'pedido', id: string | null) {
   const lista = useTabla<Archivo>(TABLAS.archivos, { entidad, entidadId: id }, id !== null)
 
-  /** Sube un archivo (las fotos se reducen antes). Si el id aún no existe, usa `idDestino`. */
-  async function subir(archivo: File, idDestino: string | null = id) {
+  /** Sube un archivo (las fotos se reducen antes). Si el id aún no existe, usa `idDestino`; `color` es solo para fotos de producto. */
+  async function subir(archivo: File, idDestino: string | null = id, color = '') {
     if (!idDestino) return { error: 'Guarda primero el registro para adjuntar archivos.' }
     const { blob, nombre, mime } = await reducirImagen(archivo)
     if (blob.size > MAX_ARCHIVO_BYTES) return { error: `${archivo.name} supera los 10 MB.` }
@@ -23,7 +23,7 @@ export function useArchivos(entidad: 'producto' | 'pedido', id: string | null) {
     }
     return ejecutar(
       'subirArchivo',
-      { entidad, entidadId: idDestino, nombre, mime, base64 },
+      { entidad, entidadId: idDestino, nombre, mime, base64, color },
       `No se pudo subir ${archivo.name}.`,
     )
   }

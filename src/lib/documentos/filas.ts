@@ -118,8 +118,11 @@ export interface OpcionesDoc {
   condiciones: boolean
   /** Orden de cada tamaño en el catálogo (por id), para ordenar las columnas. */
   ordenTamanos?: Map<string, number>
-  /** Fotos de producto por id de producto (data URL), si se pidió incluirlas. */
+  /** Fotos por producto y color (ver `claveFoto`), como data URL, si se pidió incluirlas. */
   fotos?: Map<string, string>
 }
+
+/** Clave de la foto de un color de un producto en `OpcionesDoc.fotos`. */
+export const claveFoto = (productoId: string, color: string) => `${productoId}|${color.trim().toUpperCase()}`
 
 export const nombreArchivo = (folio: string, ext: 'pdf' | 'xlsx') => `${folio}.${ext}`

@@ -169,6 +169,8 @@ export interface Producto {
   tablaPrecioId: string
   /** Id de Drive de la foto principal, vacío si no tiene. */
   fotoId: string
+  /** Foto principal de cada color que tiene fotos propias (color → id de Drive). */
+  fotosColor: Record<string, string>
   /** Colores en que viene (vacío = sin variantes de color). */
   colores: string[]
   /** Ids de los tamaños en que viene, ordenados por grupo y orden (vacío = sin tamaños). */
@@ -326,6 +328,8 @@ export interface Archivo {
   subidoPor: string
   subidoNombre: string
   fecha: string
+  /** Color del producto al que pertenece la foto; vacío = foto general. */
+  color: string
 }
 
 export interface Config {
