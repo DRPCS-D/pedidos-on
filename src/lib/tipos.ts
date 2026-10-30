@@ -132,7 +132,20 @@ export interface TablaPrecio extends ItemCatalogo {
   pasos: string
 }
 
-export type NombreCatalogo = 'proveedores' | 'clientes' | 'marcas' | 'tamanos' | 'tablasPrecio'
+/** Proyección de entrega guardada: con qué datos se calculó y las fechas que dio. */
+export interface ProyeccionGuardada extends ItemCatalogo {
+  /** 'yyyy-MM-dd' */
+  inicio: string
+  diasFabricacion: string
+  diasTransito: string
+  /** Pausas usadas, como JSON. */
+  pausas: string
+  finFabricacion: string
+  llegada: string
+  notas: string
+}
+
+export type NombreCatalogo = 'proveedores' | 'clientes' | 'marcas' | 'tamanos' | 'tablasPrecio' | 'proyecciones'
 
 /** Modificación del precio de una línea ya cargada en un pedido. */
 export interface CambioPrecio {
@@ -338,6 +351,12 @@ export interface Config {
   empresa: string
   /** Condiciones del pedido de cliente (varias líneas). */
   condiciones: string
+  /** Días que tarda la fábrica en producir, sin contar las pausas. */
+  plazoFabricacion: number
+  /** Días de transporte marítimo hasta el depósito. */
+  plazoTransito: number
+  /** Pausas de la fábrica (Año Nuevo Chino…), como JSON: [{desde, hasta}]. */
+  pausas: string
 }
 
 export interface UsuarioApp {

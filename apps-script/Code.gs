@@ -59,6 +59,7 @@ var ENCABEZADOS = {
   Asignaciones: ['id', 'pcLineaId', 'lineaId', 'cantidad'],
   Historial: ['id', 'entidad', 'entidadId', 'estado', 'fecha', 'usuario', 'nota', 'registrado'],
   Archivos: ['id', 'entidad', 'entidadId', 'driveId', 'nombre', 'mime', 'bytes', 'principal', 'subidoPor', 'fecha', 'color'],
+  Proyecciones: ['id', 'nombre', 'inicio', 'diasFabricacion', 'diasTransito', 'pausas', 'finFabricacion', 'llegada', 'notas', 'activo'],
   Config: ['clave', 'valor']
 };
 
@@ -115,11 +116,26 @@ var CATALOGOS = {
     usadoEn: [{ hoja: 'Productos', col: 'tablaPrecioId' }],
     soloAdmin: true,
     normalizar: function (obj) { obj.pasos = pasosPrecio_(obj.pasos); }
+  },
+  // Proyecciones de entrega guardadas (con los datos y las fechas del momento en que se calcularon).
+  proyecciones: {
+    hoja: 'Proyecciones', etiqueta: 'proyección',
+    campos: { nombre: 80, inicio: 10, diasFabricacion: 4, diasTransito: 4, pausas: 2000, finFabricacion: 10, llegada: 10, notas: 1000 },
+    usadoEn: [],
+    normalizar: function (obj) {
+      ['inicio', 'finFabricacion', 'llegada'].forEach(function (k) { obj[k] = fechaDia_(obj[k], k); });
+      ['diasFabricacion', 'diasTransito'].forEach(function (k) {
+        var n = Math.floor(Number(obj[k]));
+        if (!(n >= 0 && n <= 2000)) throw new Error('Los días de plazo no son válidos.');
+        obj[k] = String(n);
+      });
+      obj.pausas = pausasConfig_(obj.pausas);
+    }
   }
 };
 
 var REVISIONES = ['usuarios', 'proveedores', 'clientes', 'marcas', 'tamanos', 'productos', 'pedidos',
-                  'contenedores', 'historial', 'archivos', 'config', 'pedidosCliente', 'tablasPrecio', 'cambiosPrecio'];
+                  'contenedores', 'historial', 'archivos', 'config', 'pedidosCliente', 'tablasPrecio', 'cambiosPrecio', 'proyecciones'];
 
 // ---------- Entrada ----------
 
@@ -1565,7 +1581,34 @@ function handleDeshacerEstado_(body) {
 
 // ---------- Configuración ----------
 
-var CONFIG_EDITABLE = ['tipoCambio', 'empresa', 'condiciones'];
+var CONFIG_EDITABLE = ['tipoCambio', 'empresa', 'condiciones', 'plazoFabricacion', 'plazoTransito', 'pausas'];
+
+/** Valida 'yyyy-MM-dd' y devuelve el texto; error con el nombre del campo si no es una fecha real. */
+function fechaDia_(valor, nombre) {
+  var t = String(valor == null ? '' : valor).trim();
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  var d = m && new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (!m || d.getUTCFullYear() !== Number(m[1]) || d.getUTCMonth() !== Number(m[2]) - 1 || d.getUTCDate() !== Number(m[3])) {
+    throw new Error('La fecha «' + nombre + '» no es válida.');
+  }
+  return t;
+}
+
+/** Pausas de la fábrica como JSON [{desde, hasta}], con fechas reales y desde <= hasta. Devuelve el texto normalizado. */
+function pausasConfig_(texto) {
+  var lista;
+  try { lista = JSON.parse(String(texto || '[]')); } catch (e) { throw new Error('Las pausas no tienen un formato válido.'); }
+  if (!Array.isArray(lista)) throw new Error('Las pausas no tienen un formato válido.');
+  if (lista.length > 40) throw new Error('Hay demasiadas pausas.');
+  var limpias = lista.map(function (p) {
+    var desde = fechaDia_(p && p.desde, 'desde');
+    var hasta = fechaDia_(p && p.hasta, 'hasta');
+    if (desde > hasta) throw new Error('Una pausa termina antes de empezar.');
+    return { desde: desde, hasta: hasta };
+  });
+  limpias.sort(function (a, b) { return a.desde < b.desde ? -1 : a.desde > b.desde ? 1 : 0; });
+  return JSON.stringify(limpias);
+}
 
 function leerConfig_() {
   var cfg = {};
@@ -1587,7 +1630,14 @@ function guardarConfig_(clave, valor) {
 function handleGetConfig_(body) {
   requireAuth_(body);
   var cfg = leerConfig_();
-  return jsonOut_({ ok: true, config: [{ tipoCambio: Number(cfg.tipoCambio) || 0, empresa: String(cfg.empresa || ''), condiciones: String(cfg.condiciones || '') }] });
+  return jsonOut_({ ok: true, config: [{
+    tipoCambio: Number(cfg.tipoCambio) || 0,
+    empresa: String(cfg.empresa || ''),
+    condiciones: String(cfg.condiciones || ''),
+    plazoFabricacion: Number(cfg.plazoFabricacion) || 90,
+    plazoTransito: Number(cfg.plazoTransito) || 90,
+    pausas: String(cfg.pausas || '[]')
+  }] });
 }
 
 function handleSetConfig_(body) {
@@ -1599,6 +1649,12 @@ function handleSetConfig_(body) {
       var valor = numero_(body.valor, 'El tipo de cambio');
       if (!(valor > 0)) throw new Error('El tipo de cambio debe ser mayor que cero.');
       guardarConfig_(clave, String(valor));
+    } else if (clave === 'plazoFabricacion' || clave === 'plazoTransito') {
+      var dias = Math.floor(numero_(body.valor, 'El plazo'));
+      if (!(dias >= (clave === 'plazoFabricacion' ? 1 : 0) && dias <= 2000)) throw new Error('El plazo debe estar entre 1 y 2000 días.');
+      guardarConfig_(clave, String(dias));
+    } else if (clave === 'pausas') {
+      guardarConfig_(clave, pausasConfig_(body.valor));
     } else {
       var texto = String(body.valor == null ? '' : body.valor).trim();
       if (texto.length > 2000) throw new Error('El texto es demasiado largo (máximo 2000 caracteres).');
@@ -1833,6 +1889,11 @@ function instalar() {
   if (!cfg.tipoCambio) {
     guardarConfig_('tipoCambio', '7500');
     mensaje += 'Tipo de cambio inicial: 7500 Gs/USD (cámbialo en Catálogos). ';
+  }
+  if (!cfg.pausas) {
+    // Año Nuevo Chino: la fábrica para unos dos meses. Se ajusta cada año en Catálogos.
+    guardarConfig_('pausas', JSON.stringify([{ desde: '2027-01-01', hasta: '2027-02-28' }]));
+    mensaje += 'Pausa de fábrica inicial: 01/01/2027 al 28/02/2027 (ajústala en Catálogos). ';
   }
   var carpetaOk = false;
   if (cfg.carpetaDriveId) {

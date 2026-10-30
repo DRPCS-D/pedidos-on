@@ -1,4 +1,5 @@
 import { ejecutar } from '@/lib/ejecutar'
+import { plazosDe } from '@/lib/proyeccion'
 import { TABLAS } from '@/lib/tablas'
 import type { Config } from '@/lib/tipos'
 import { useTabla } from './useTabla'
@@ -17,5 +18,9 @@ export function useConfig() {
   const guardarTexto = (clave: 'empresa' | 'condiciones', valor: string) =>
     ejecutar('setConfig', { clave, valor }, 'No se pudo guardar.')
 
-  return { ...lista, tipoCambio, empresa, condiciones, guardarTipoCambio, guardarTexto }
+  const plazos = plazosDe(lista.data[0])
+  const guardarPlazo = (clave: 'plazoFabricacion' | 'plazoTransito' | 'pausas', valor: number | string) =>
+    ejecutar('setConfig', { clave, valor }, 'No se pudo guardar.')
+
+  return { ...lista, tipoCambio, empresa, condiciones, plazos, guardarTipoCambio, guardarTexto, guardarPlazo }
 }

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { ejecutar } from '@/lib/ejecutar'
 import { TABLAS } from '@/lib/tablas'
-import type { Cliente, ItemCatalogo, NombreCatalogo, Proveedor, TablaPrecio, Tamano } from '@/lib/tipos'
+import type { Cliente, ItemCatalogo, NombreCatalogo, Proveedor, ProyeccionGuardada, TablaPrecio, Tamano } from '@/lib/tipos'
 import { useTabla } from './useTabla'
 
 interface TiposCatalogo {
@@ -10,6 +10,7 @@ interface TiposCatalogo {
   marcas: ItemCatalogo
   tamanos: Tamano
   tablasPrecio: TablaPrecio
+  proyecciones: ProyeccionGuardada
 }
 
 const ETIQUETA: Record<NombreCatalogo, string> = {
@@ -18,6 +19,7 @@ const ETIQUETA: Record<NombreCatalogo, string> = {
   marcas: 'marca',
   tamanos: 'tamaño',
   tablasPrecio: 'tabla de precios',
+  proyecciones: 'proyección',
 }
 
 /**

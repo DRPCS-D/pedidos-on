@@ -15,6 +15,7 @@ const NAV_PRINCIPAL = [
   { to: '/pedidos', label: 'Pedidos fábrica', end: false },
   { to: '/pedidos-cliente', label: 'Pedidos cliente', end: false },
   { to: '/contenedores', label: 'Contenedores', end: false },
+  { to: '/proyeccion', label: 'Proyección', end: false },
 ]
 const NAV_MAS = [
   { to: '/productos', label: 'Productos' },
@@ -110,7 +111,7 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-40 border-b border-border bg-card/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/85 backdrop-blur print:hidden">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:px-6">
           <span className="flex min-w-0 items-center gap-2">
             <img src="/logo-on.png" alt="" className="h-7 w-auto shrink-0" />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { CatalogoSimple, type CampoCatalogo, type ColumnaCatalogo } from '@/components/catalogos/CatalogoSimple'
+import { PlazosPausas } from '@/components/catalogos/PlazosPausas'
 import { TablasPrecio } from '@/components/catalogos/TablasPrecio'
 import { Button } from '@/components/ui/button'
 import { Field, Input, Textarea } from '@/components/ui/field'
@@ -139,11 +140,12 @@ export default function Catalogos() {
     <div>
       <div className="mb-5">
         <h1 className="text-lg font-semibold text-foreground">Catálogos</h1>
-        <p className="text-sm text-muted-foreground">Marcas, tamaños (tallas), tipo de cambio y tablas de precio.</p>
+        <p className="text-sm text-muted-foreground">Marcas, tamaños (tallas), tipo de cambio, tablas de precio y plazos de la fábrica.</p>
       </div>
 
       <TipoDeCambio />
       <TablasPrecio />
+      <PlazosPausas />
       <TextosDocumentos />
 
       <div className="mb-5 flex gap-1 border-b border-border">
