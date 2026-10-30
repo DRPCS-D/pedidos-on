@@ -21,7 +21,6 @@ const NAV_MAS = [
   { to: '/productos', label: 'Productos' },
   { to: '/clientes', label: 'Clientes' },
   { to: '/proveedores', label: 'Proveedores' },
-  { to: '/catalogos', label: 'Catálogos' },
 ]
 const NAV_USUARIOS = { to: '/usuarios', label: 'Usuarios' }
 const NAV_CONFIGURACION = { to: '/configuracion', label: 'Configuración' }

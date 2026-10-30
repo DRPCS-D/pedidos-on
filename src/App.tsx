@@ -1,6 +1,5 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import AppLayout from '@/components/layout/AppLayout'
-import Catalogos from '@/pages/Catalogos'
 import Clientes from '@/pages/Clientes'
 import Configuracion from '@/pages/Configuracion'
 import ContenedorDetalle from '@/pages/ContenedorDetalle'
@@ -41,7 +40,7 @@ export default function App() {
         <Route path="productos" element={<Productos />} />
         <Route path="clientes" element={<Clientes />} />
         <Route path="proveedores" element={<Proveedores />} />
-        <Route path="catalogos" element={<Catalogos />} />
+        <Route path="catalogos" element={<Navigate to="/productos" replace />} />
         <Route path="configuracion" element={<Configuracion />} />
         <Route path="usuarios" element={<Usuarios />} />
       </Route>

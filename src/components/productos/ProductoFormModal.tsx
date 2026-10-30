@@ -278,7 +278,7 @@ export function ProductoFormModal({
         <div>
           <Label>Tamaños en que viene</Label>
           {grupos.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Primero crea tamaños en Catálogos.</p>
+            <p className="text-xs text-muted-foreground">Primero crea tamaños en la pestaña Tamaños de Productos.</p>
           ) : (
             <div className="space-y-3 rounded-md border border-input p-3">
               {grupos.map(([grupo, lista]) => {
@@ -360,7 +360,7 @@ export function ProductoFormModal({
           </Field>
           <Field
             label="Venta (Gs)"
-            hint={tipoCambio ? `Cotización: ${formatGs(tipoCambio)} por USD` : 'Define el tipo de cambio en Catálogos > Precio.'}
+            hint={tipoCambio ? `Cotización: ${formatGs(tipoCambio)} por USD` : 'Define el tipo de cambio en Productos > Precio.'}
           >
             <div className="flex gap-2">
               <Input inputMode="numeric" value={f.precioVentaGs} onChange={(e) => set('precioVentaGs', e.target.value)} />

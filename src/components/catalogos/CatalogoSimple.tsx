@@ -52,7 +52,7 @@ export function CatalogoSimple({
   campos: CampoCatalogo[]
   columnas: ColumnaCatalogo[]
   extra?: (r: Registro) => ReactNode
-  /** Dentro de otra página: sin título grande. */
+  /** Dentro de otra página (pestañas): sin título ni descripción, solo el botón de alta. */
   incrustado?: boolean
 }) {
   const { puedeEditar } = useAuth()
@@ -70,35 +70,43 @@ export function CatalogoSimple({
     return registros.filter((r) => normalizar(campos.map((c) => String(r[c.clave] ?? '')).join(' ')).includes(q))
   }, [registros, busqueda, campos])
 
+  const buscador = registros.length > 0 && (
+    <div className="relative w-full max-w-sm">
+      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        aria-label="Buscar"
+        className="pl-9"
+        placeholder="Buscar…"
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+      />
+    </div>
+  )
+  const botonNuevo = puedeEditar && (
+    <Button onClick={() => setModal('nuevo')}>
+      <Plus /> Nuevo
+    </Button>
+  )
+
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          {incrustado ? (
-            <h2 className="text-base font-semibold text-foreground">{titulo}</h2>
-          ) : (
-            <h1 className="text-lg font-semibold text-foreground">{titulo}</h1>
-          )}
-          <p className="text-sm text-muted-foreground">{descripcion}</p>
+      {incrustado ? (
+        // En pestañas: el buscador y el botón comparten fila; el título lo da la página.
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          {buscador}
+          {botonNuevo && <div className="ml-auto">{botonNuevo}</div>}
         </div>
-        {puedeEditar && (
-          <Button onClick={() => setModal('nuevo')}>
-            <Plus /> Nuevo
-          </Button>
-        )}
-      </div>
-
-      {registros.length > 0 && (
-        <div className="relative mb-4 max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            aria-label="Buscar"
-            className="pl-9"
-            placeholder="Buscar…"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-          />
-        </div>
+      ) : (
+        <>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-lg font-semibold text-foreground">{titulo}</h1>
+              <p className="text-sm text-muted-foreground">{descripcion}</p>
+            </div>
+            {botonNuevo}
+          </div>
+          {buscador && <div className="mb-4">{buscador}</div>}
+        </>
       )}
 
       {loading ? (

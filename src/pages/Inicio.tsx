@@ -1,4 +1,4 @@
-import { ClipboardList, Container, Factory, PackageSearch, Package, Settings2, SlidersHorizontal, Users, UserRound } from 'lucide-react'
+import { ClipboardList, Container, Factory, PackageSearch, Package, SlidersHorizontal, Users, UserRound } from 'lucide-react'
 import { useMemo, type ComponentType, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { BadgeEstadoContenedor, BadgeEstadoPedido } from '@/components/pedidos/badges'
@@ -69,10 +69,9 @@ export default function Inicio() {
     { to: '/pedidos', titulo: 'Pedidos a fábrica', descripcion: 'Pedidos a fábrica, estados y documentos.', icono: PackageSearch },
     { to: '/pedidos-cliente', titulo: 'Pedidos de clientes', descripcion: 'Lo que pide cada cliente y de dónde se cubre.', icono: ClipboardList },
     { to: '/contenedores', titulo: 'Contenedores', descripcion: 'Embarques, carga y llegadas.', icono: Container },
-    { to: '/productos', titulo: 'Productos', descripcion: 'Catálogo con fotos y precios.', icono: Package },
+    { to: '/productos', titulo: 'Productos', descripcion: 'Catálogo con fotos, marcas, tamaños y precios.', icono: Package },
     { to: '/clientes', titulo: 'Clientes', descripcion: 'Quién pide y todos sus pedidos.', icono: UserRound },
     { to: '/proveedores', titulo: 'Proveedores', descripcion: 'Fábricas y sus pedidos.', icono: Factory },
-    { to: '/catalogos', titulo: 'Catálogos', descripcion: 'Marcas, tamaños, tablas de precio y tipo de cambio.', icono: Settings2 },
     { to: '/configuracion', titulo: 'Configuración', descripcion: 'Plazos, pausas de la fábrica y textos de documentos.', icono: SlidersHorizontal },
     ...(esAdmin
       ? [{ to: '/usuarios', titulo: 'Usuarios', descripcion: 'Altas, roles y contraseñas.', icono: Users }]

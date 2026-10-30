@@ -1889,7 +1889,7 @@ function instalar() {
   var mensaje = creadas.length ? 'Pestañas creadas: ' + creadas.join(', ') + '. ' : 'Las pestañas ya existían. ';
 
   if (leer_('Tamanos').filas.length === 0) {
-    // Tamaños habituales para empezar; se pueden editar, desactivar o agregar en Catálogos.
+    // Tamaños habituales para empezar; se pueden editar, desactivar o agregar en Productos > Tamaños.
     for (var n = 34; n <= 45; n++) agregar_('Tamanos', { id: nuevoId_(), nombre: String(n), grupo: 'Calzado', orden: n, activo: true });
     ['XS', 'S', 'M', 'L', 'XL', 'XXL'].forEach(function (t, i) {
       agregar_('Tamanos', { id: nuevoId_(), nombre: t, grupo: 'Ropa', orden: i + 1, activo: true });
@@ -1900,7 +1900,7 @@ function instalar() {
   var cfg = leerConfig_();
   if (!cfg.tipoCambio) {
     guardarConfig_('tipoCambio', '7500');
-    mensaje += 'Tipo de cambio inicial: 7500 Gs/USD (cámbialo en Catálogos > Precio). ';
+    mensaje += 'Tipo de cambio inicial: 7500 Gs/USD (cámbialo en Productos > Precio). ';
   }
   if (!cfg.pausas) {
     // Año Nuevo Chino: la fábrica para unos dos meses. Se ajusta cada año en Configuración.
