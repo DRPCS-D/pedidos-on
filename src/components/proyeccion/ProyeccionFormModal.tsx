@@ -7,7 +7,9 @@ import { Modal } from '@/components/ui/modal'
 import { useConfig } from '@/hooks/useConfig'
 import { ejecutarConDatos } from '@/lib/ejecutar'
 import { formatFecha, hoyIso } from '@/lib/format'
+import { guardarEnLista } from '@/lib/parches'
 import { aDia, aniosSinPausa, fechaDia, pausasDe, proyectar, proyectarInverso } from '@/lib/proyeccion'
+import { TABLAS, parchearTabla } from '@/lib/tablas'
 import type { ProyeccionGuardada } from '@/lib/tipos'
 import { cn } from '@/lib/utils'
 import { textoDiasHasta } from './textos'
@@ -81,28 +83,27 @@ export function ProyeccionFormModal({
     if (!proy) return setError('La fecha no es válida.')
     setGuardando(true)
     setError(null)
+    const datos = {
+      nombre: nombre.trim(),
+      notas: notas.trim(),
+      modo,
+      fechaBase: fecha,
+      inicio: proy.inicio,
+      diasFabricacion: String(diasFab),
+      diasTransito: String(diasTra),
+      pausas: JSON.stringify(pausas),
+      finFabricacion: proy.finFabricacion,
+      llegada: proy.llegada,
+    }
     const { error: err, data } = await ejecutarConDatos<{ id: string }>(
       'guardarCatalogo',
-      {
-        tabla: 'proyecciones',
-        id: id ?? '',
-        datos: {
-          nombre: nombre.trim(),
-          notas: notas.trim(),
-          modo,
-          fechaBase: fecha,
-          inicio: proy.inicio,
-          diasFabricacion: String(diasFab),
-          diasTransito: String(diasTra),
-          pausas: JSON.stringify(pausas),
-          finFabricacion: proy.finFabricacion,
-          llegada: proy.llegada,
-        },
-      },
+      { tabla: 'proyecciones', id: id ?? '', datos },
       'No se pudo guardar la proyección.',
     )
     setGuardando(false)
     if (err || !data) return setError(err ?? 'No se pudo guardar la proyección.')
+    // Confirmado por el backend: la lista (y con ella el detalle) cambia ya, sin esperar a bajarla otra vez.
+    parchearTabla(TABLAS.proyecciones, { tabla: 'proyecciones' }, (lista) => guardarEnLista(lista as { id: string }[], data.id, datos))
     toast.success(id ? 'Proyección actualizada.' : 'Proyección creada.')
     onGuardada(data.id)
   }

@@ -46,7 +46,7 @@ export default function PedidoDetalle() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { esAdmin, puedeEditar } = useAuth()
-  const { porId, loading, error, refetch, cambiarEstado, borrar, deshacerEstado } = usePedidos()
+  const { porId, loading, actualizando, error, refetch, cambiarEstado, borrar, deshacerEstado } = usePedidos()
   const { data: proveedores, nombres: nombreProveedor } = useCatalogo('proveedores')
   const { empresa } = useConfig()
   const { nombres: nombreCliente } = useCatalogo('clientes')
@@ -78,7 +78,7 @@ export default function PedidoDetalle() {
       .filter((x) => x.unidades > 0)
   }, [contenedores, pedido])
 
-  if (loading) return <Skeleton className="h-64 w-full" />
+  if (loading || (actualizando && !pedido)) return <Skeleton className="h-64 w-full" />
   if (error) return <ErrorBox mensaje={error} />
   if (!pedido || !t) {
     return (

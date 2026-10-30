@@ -85,14 +85,15 @@ export default function ProyeccionDetalle() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { puedeEditar } = useAuth()
-  const { data, loading, error, borrar, refetch } = useCatalogo('proyecciones')
+  const { data, loading, actualizando, error, borrar, refetch } = useCatalogo('proyecciones')
   const [editando, setEditando] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
   const [procesando, setProcesando] = useState(false)
 
   const g = data.find((p) => p.id === id)
 
-  if (loading && data.length === 0) return <Skeleton className="h-64 w-full" />
+  // Mientras se baja la lista no se sabe todavía si el registro existe: nada de «No se encontró» por un instante.
+  if ((loading || actualizando) && !g) return <Skeleton className="h-64 w-full" />
   if (error) return <ErrorBox mensaje={error} />
   if (!g) {
     return (

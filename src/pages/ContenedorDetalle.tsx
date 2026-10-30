@@ -61,7 +61,7 @@ export default function ContenedorDetalle() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { esAdmin, puedeEditar } = useAuth()
-  const { porId, loading, error, refetch, cambiarEstado, borrar, deshacerEstado } = useContenedores()
+  const { porId, loading, actualizando, error, refetch, cambiarEstado, borrar, deshacerEstado } = useContenedores()
   const { porId: pedidoPorId } = usePedidos()
   const { nombres: nombreProveedor } = useCatalogo('proveedores')
 
@@ -84,7 +84,7 @@ export default function ContenedorDetalle() {
     return [...grupos.values()]
   }, [contenedor])
 
-  if (loading) return <Skeleton className="h-64 w-full" />
+  if (loading || (actualizando && !contenedor)) return <Skeleton className="h-64 w-full" />
   if (error) return <ErrorBox mensaje={error} />
   if (!contenedor) {
     return (

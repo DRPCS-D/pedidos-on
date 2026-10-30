@@ -38,7 +38,7 @@ export default function PedidoClienteDetalle() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { esAdmin, puedeEditar } = useAuth()
-  const { porId, loading, error, refetch, asignarAutomatico, cambiarEstado, borrar, deshacerEstado } = usePedidosCliente()
+  const { porId, loading, actualizando, error, refetch, asignarAutomatico, cambiarEstado, borrar, deshacerEstado } = usePedidosCliente()
   const { porId: pedidos, refetch: refetchPedidos } = usePedidos()
   const { data: clientes, nombres: nombreCliente } = useCatalogo('clientes')
   const { empresa, condiciones } = useConfig()
@@ -53,7 +53,7 @@ export default function PedidoClienteDetalle() {
 
   const t = useMemo(() => (pc ? totalesLineas(pc.lineas) : null), [pc])
 
-  if (loading) return <Skeleton className="h-64 w-full" />
+  if (loading || (actualizando && !pc)) return <Skeleton className="h-64 w-full" />
   if (error) return <ErrorBox mensaje={error} />
   if (!pc || !t) {
     return (
