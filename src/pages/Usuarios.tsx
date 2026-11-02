@@ -42,11 +42,7 @@ export default function Usuarios() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Usuarios</h1>
-          <p className="text-sm text-muted-foreground">Quiénes usan el sistema y qué pueden hacer.</p>
-        </div>
+      <div className="mb-5 flex justify-end">
         <Button onClick={() => setModalNuevo(true)}>
           <Plus /> Nuevo
         </Button>

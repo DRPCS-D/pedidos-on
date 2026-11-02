@@ -21,19 +21,13 @@ export default function Proyecciones() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Proyección de entrega</h1>
-          <p className="text-sm text-muted-foreground">
-            Cuándo llegaría un pedido y hasta cuándo se puede hacer, descontando las pausas de la fábrica.
-          </p>
-        </div>
-        {puedeEditar && (
+      {puedeEditar && (
+        <div className="mb-5 flex justify-end">
           <Button onClick={() => setNueva(true)}>
             <Plus /> Nueva proyección
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {error ? (
         <ErrorBox mensaje={error} />

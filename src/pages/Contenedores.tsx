@@ -41,45 +41,40 @@ export default function Contenedores() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Contenedores</h1>
-          <p className="text-sm text-muted-foreground">Embarques: qué lleva cada contenedor y dónde está.</p>
-        </div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {loading ? (
+          <Skeleton className="h-9.5 w-full max-w-md" />
+        ) : (
+          data.length > 0 && (
+            <>
+              <div className="relative w-full max-w-xs">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Buscar"
+                  className="pl-9"
+                  placeholder="Número, naviera, BL o destino…"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                />
+              </div>
+              <Select aria-label="Estado" className="w-48" value={estado} onChange={(e) => setEstado(e.target.value as FiltroEstado)}>
+                <option value="activos">En curso</option>
+                <option value="">Todos los estados</option>
+                {ESTADOS_CONTENEDOR.map((e) => (
+                  <option key={e} value={e}>
+                    {ESTADO_CONTENEDOR_LABEL[e]}
+                  </option>
+                ))}
+              </Select>
+            </>
+          )
+        )}
         {puedeEditar && (
-          <Button onClick={() => setNuevo(true)}>
+          <Button className="ml-auto" onClick={() => setNuevo(true)}>
             <Plus /> Nuevo contenedor
           </Button>
         )}
       </div>
-
-      {loading ? (
-        <Skeleton className="mb-4 h-9.5 max-w-md" />
-      ) : (
-        data.length > 0 && (
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <div className="relative w-full max-w-xs">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                aria-label="Buscar"
-                className="pl-9"
-                placeholder="Número, naviera, BL o destino…"
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-              />
-            </div>
-            <Select aria-label="Estado" className="w-48" value={estado} onChange={(e) => setEstado(e.target.value as FiltroEstado)}>
-              <option value="activos">En curso</option>
-              <option value="">Todos los estados</option>
-              {ESTADOS_CONTENEDOR.map((e) => (
-                <option key={e} value={e}>
-                  {ESTADO_CONTENEDOR_LABEL[e]}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )
-      )}
 
       {loading ? (
         <TableSkeleton columnas={[16, 8, 16, 18, 10, 10, 8, 14]} />

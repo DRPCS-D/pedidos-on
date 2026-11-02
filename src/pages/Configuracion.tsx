@@ -11,11 +11,6 @@ export default function Configuracion() {
 
   return (
     <div>
-      <div className="mb-5">
-        <h1 className="text-lg font-semibold text-foreground">Configuración</h1>
-        <p className="text-sm text-muted-foreground">Plazos y pausas de la fábrica, y textos de los documentos (PDF y Excel).</p>
-      </div>
-
       <div className="mb-5 flex gap-1 border-b border-border">
         {(
           [

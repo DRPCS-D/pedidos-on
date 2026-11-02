@@ -37,17 +37,14 @@ export interface ColumnaCatalogo {
 export function CatalogoSimple({
   tabla,
   titulo,
-  descripcion,
   singular,
   femenino = false,
   campos,
   columnas,
   extra,
-  incrustado = false,
 }: {
   tabla: NombreCatalogo
   titulo: string
-  descripcion: string
   /** 'proveedor', 'cliente'… en minúscula, para los mensajes. */
   singular: string
   /** Para los títulos: «Nueva marca» y no «Nuevo marca». */
@@ -56,7 +53,6 @@ export function CatalogoSimple({
   columnas: ColumnaCatalogo[]
   extra?: (r: Registro) => ReactNode
   /** Dentro de otra página (pestañas): sin título ni descripción, solo el botón de alta. */
-  incrustado?: boolean
 }) {
   const { puedeEditar } = useAuth()
   const { data, loading, error, refetch, guardar, borrar } = useCatalogo(tabla)
@@ -93,24 +89,11 @@ export function CatalogoSimple({
 
   return (
     <div>
-      {incrustado ? (
-        // En pestañas: el buscador y el botón comparten fila; el título lo da la página.
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          {buscador}
-          {botonNuevo && <div className="ml-auto">{botonNuevo}</div>}
-        </div>
-      ) : (
-        <>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-lg font-semibold text-foreground">{titulo}</h1>
-              <p className="text-sm text-muted-foreground">{descripcion}</p>
-            </div>
-            {botonNuevo}
-          </div>
-          {buscador && <div className="mb-4">{buscador}</div>}
-        </>
-      )}
+      {/* El buscador y el botón comparten fila. */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {buscador}
+        {botonNuevo && <div className="ml-auto">{botonNuevo}</div>}
+      </div>
 
       {loading ? (
         <TableSkeleton columnas={[30, 25, 20, 15]} />

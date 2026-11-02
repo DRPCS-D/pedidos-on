@@ -32,7 +32,6 @@ export default function Proveedores() {
     <CatalogoSimple
       tabla="proveedores"
       titulo="Proveedores"
-      descripcion="Fábricas a las que se hacen los pedidos."
       singular="proveedor"
       campos={CAMPOS}
       columnas={columnas}

@@ -3,15 +3,9 @@ import { ListaPedidosFabrica } from '@/components/pedidos/ListaPedidosFabrica'
 import { ListaPedidosCliente } from '@/components/pedidosCliente/ListaPedidosCliente'
 import { cn } from '@/lib/utils'
 
-/** Cada pestaña con su nombre y el título y la descripción que la página muestra mientras está elegida. */
 const PESTANAS = [
-  { clave: 'fabrica', etiqueta: 'A fábrica', titulo: 'Pedidos a fábrica', descripcion: 'Pedidos a fábricas de China y su estado.' },
-  {
-    clave: 'clientes',
-    etiqueta: 'Clientes',
-    titulo: 'Pedidos de clientes',
-    descripcion: 'Lo que pide cada cliente y de qué pedidos a fábrica se cubre.',
-  },
+  { clave: 'fabrica', etiqueta: 'A fábrica' },
+  { clave: 'clientes', etiqueta: 'Clientes' },
 ] as const
 
 type Pestana = (typeof PESTANAS)[number]['clave']
@@ -28,11 +22,6 @@ export default function Pedidos() {
 
   return (
     <div>
-      <div className="mb-5">
-        <h1 className="text-lg font-semibold text-foreground">{actual.titulo}</h1>
-        <p className="text-sm text-muted-foreground">{actual.descripcion}</p>
-      </div>
-
       <div className="mb-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border">
         {PESTANAS.map(({ clave, etiqueta }) => (
           <button

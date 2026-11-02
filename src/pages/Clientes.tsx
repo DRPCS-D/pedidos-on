@@ -32,7 +32,6 @@ export default function Clientes() {
     <CatalogoSimple
       tabla="clientes"
       titulo="Clientes"
-      descripcion="Quién pide. Sus pedidos se cubren con lo que llega de una o varias fábricas."
       singular="cliente"
       campos={CAMPOS}
       columnas={columnas}

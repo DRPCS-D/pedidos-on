@@ -19,17 +19,11 @@ const COLUMNAS_TAMANO: ColumnaCatalogo[] = [
   { label: 'Orden', render: (r) => String(r.orden ?? '') },
 ]
 
-/** Cada pestaña con su nombre y el título y la descripción que la página muestra mientras está elegida. */
 const PESTANAS = [
-  { clave: 'productos', etiqueta: 'Productos', titulo: 'Productos', descripcion: 'Catálogo con fotos y precios de costo y de venta.' },
-  { clave: 'marcas', etiqueta: 'Marcas', titulo: 'Marcas', descripcion: 'Marca de cada producto.' },
-  {
-    clave: 'tamanos',
-    etiqueta: 'Tamaños',
-    titulo: 'Tamaños',
-    descripcion: 'Tallas y medidas en que vienen los productos (36, 37… para calzado; S, M, L para ropa).',
-  },
-  { clave: 'precio', etiqueta: 'Precio', titulo: 'Precio', descripcion: 'Tipo de cambio y tablas de precio para calcular el precio de venta.' },
+  { clave: 'productos', etiqueta: 'Productos' },
+  { clave: 'marcas', etiqueta: 'Marcas' },
+  { clave: 'tamanos', etiqueta: 'Tamaños' },
+  { clave: 'precio', etiqueta: 'Precio' },
 ] as const
 
 type Pestana = (typeof PESTANAS)[number]['clave']
@@ -46,11 +40,6 @@ export default function Productos() {
 
   return (
     <div>
-      <div className="mb-5">
-        <h1 className="text-lg font-semibold text-foreground">{actual.titulo}</h1>
-        <p className="text-sm text-muted-foreground">{actual.descripcion}</p>
-      </div>
-
       <div className="mb-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border">
         {PESTANAS.map(({ clave, etiqueta }) => (
           <button
@@ -77,10 +66,8 @@ export default function Productos() {
         </>
       ) : pestana === 'marcas' ? (
         <CatalogoSimple
-          incrustado
           tabla="marcas"
           titulo="Marcas"
-          descripcion="Marca de cada producto."
           singular="marca"
           femenino
           campos={CAMPOS_NOMBRE}
@@ -88,10 +75,8 @@ export default function Productos() {
         />
       ) : (
         <CatalogoSimple
-          incrustado
           tabla="tamanos"
           titulo="Tamaños"
-          descripcion="Tallas y medidas en que vienen los productos (36, 37… para calzado; S, M, L para ropa)."
           singular="tamaño"
           campos={CAMPOS_TAMANO}
           columnas={COLUMNAS_TAMANO}
