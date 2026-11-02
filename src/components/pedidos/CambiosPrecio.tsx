@@ -1,3 +1,4 @@
+import { CajaScroll } from '@/components/ui/caja-scroll'
 import { useCambiosPrecio } from '@/hooks/useCambiosPrecio'
 import { formatGs, formatUsd } from '@/lib/format'
 import type { CambioPrecio } from '@/lib/tipos'
@@ -15,7 +16,7 @@ const cuando = (iso: string) => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('es-PY', { dateStyle: 'short', timeStyle: 'short' })
 }
 
-/** Modificaciones de precio hechas después de cargar el pedido, con el precio anterior. No aparece si no hubo ninguna. */
+/** Modificaciones de precio hechas después de cargar el pedido, con el precio anterior. No aparece si no hubo ninguna. El más nuevo arriba. */
 export function CambiosPrecio({ entidad, id }: { entidad: 'pedido' | 'pedidoCliente'; id: string }) {
   const { data } = useCambiosPrecio(entidad, id)
   if (data.length === 0) return null
@@ -26,9 +27,9 @@ export function CambiosPrecio({ entidad, id }: { entidad: 'pedido' | 'pedidoClie
       <p className="px-5 pt-3 text-xs text-muted-foreground">
         Este pedido conserva los precios con que se cargó. Aquí quedan las veces que se modificaron, con el precio original.
       </p>
-      <div className="overflow-x-auto">
+      <CajaScroll alto="max-h-56" className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead>
+          <thead className="sticky top-0 bg-card">
             <tr className="border-b border-border text-left text-xs text-muted-foreground">
               <th className="px-4 py-2.5 font-medium">Cuándo</th>
               <th className="px-4 py-2.5 font-medium">Producto</th>
@@ -39,7 +40,7 @@ export function CambiosPrecio({ entidad, id }: { entidad: 'pedido' | 'pedidoClie
             </tr>
           </thead>
           <tbody>
-            {data.map((c) => (
+            {[...data].reverse().map((c) => (
               <tr key={c.id} className="border-b border-border last:border-0">
                 <td className="tabular whitespace-nowrap px-4 py-2.5 text-muted-foreground">{cuando(c.cuando)}</td>
                 <td className="px-4 py-2.5 text-foreground">
@@ -53,7 +54,7 @@ export function CambiosPrecio({ entidad, id }: { entidad: 'pedido' | 'pedidoClie
             ))}
           </tbody>
         </table>
-      </div>
+      </CajaScroll>
     </section>
   )
 }
