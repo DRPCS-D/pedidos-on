@@ -1,13 +1,14 @@
-import { CalendarDays, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { CalendarDays, Plus, Search } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ProyeccionFormModal } from '@/components/proyeccion/ProyeccionFormModal'
 import { Button } from '@/components/ui/button'
 import { ErrorBox, Vacio } from '@/components/ui/estado'
+import { Input } from '@/components/ui/field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCatalogo } from '@/hooks/useCatalogo'
-import { formatFecha } from '@/lib/format'
+import { formatFecha, normalizar } from '@/lib/format'
 
 /** Lista de proyecciones de entrega guardadas; al entrar a una se ve su detalle con el calendario. */
 export default function Proyecciones() {
@@ -15,31 +16,55 @@ export default function Proyecciones() {
   const navigate = useNavigate()
   const { data, loading, error, refetch } = useCatalogo('proyecciones')
   const [nueva, setNueva] = useState(false)
+  const [busqueda, setBusqueda] = useState('')
 
   // Las más recientes primero: por fecha de llegada, de la más lejana a la más próxima.
-  const filas = [...data].sort((a, b) => b.llegada.localeCompare(a.llegada))
+  const ordenadas = useMemo(() => [...data].sort((a, b) => b.llegada.localeCompare(a.llegada)), [data])
+  const filas = useMemo(() => {
+    const q = normalizar(busqueda)
+    if (!q) return ordenadas
+    return ordenadas.filter((g) =>
+      normalizar(`${g.nombre} ${g.notas} ${formatFecha(g.inicio)} ${formatFecha(g.finFabricacion)} ${formatFecha(g.llegada)}`).includes(q),
+    )
+  }, [ordenadas, busqueda])
 
   return (
     <div>
-      {puedeEditar && (
-        <div className="mb-5 flex justify-end">
-          <Button onClick={() => setNueva(true)}>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {ordenadas.length > 0 && (
+          <div className="relative w-full max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label="Buscar"
+              className="pl-9"
+              placeholder="Nombre, notas o fecha…"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
+        )}
+        {puedeEditar && (
+          <Button className="ml-auto" onClick={() => setNueva(true)}>
             <Plus /> Nueva proyección
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       {error ? (
         <ErrorBox mensaje={error} />
       ) : loading && data.length === 0 ? (
         <Skeleton className="h-40 w-full" />
-      ) : filas.length === 0 ? (
+      ) : ordenadas.length === 0 ? (
         <div className="rounded-lg border border-border bg-card">
           <Vacio
             icono={CalendarDays}
             titulo="Todavía no hay proyecciones"
             descripcion="Crea una con la fecha de inicio de la fabricación o con la fecha en que el cliente quiere recibir."
           />
+        </div>
+      ) : filas.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card">
+          <Vacio icono={CalendarDays} titulo="Sin resultados" descripcion="Prueba con otra búsqueda." />
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-xs">

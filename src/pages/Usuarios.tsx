@@ -42,29 +42,28 @@ export default function Usuarios() {
 
   return (
     <div>
-      <div className="mb-5 flex justify-end">
-        <Button onClick={() => setModalNuevo(true)}>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {loading ? (
+          <Skeleton className="h-9.5 w-full max-w-sm" />
+        ) : (
+          data.length > 0 && (
+            <div className="relative w-full max-w-sm">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                name="busqueda"
+                aria-label="Buscar"
+                className="pl-9"
+                placeholder="Buscar por usuario o nombre…"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+              />
+            </div>
+          )
+        )}
+        <Button className="ml-auto" onClick={() => setModalNuevo(true)}>
           <Plus /> Nuevo
         </Button>
       </div>
-
-      {loading ? (
-        <Skeleton className="mb-4 h-9.5 max-w-sm" />
-      ) : (
-        data.length > 0 && (
-          <div className="relative mb-4 max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              name="busqueda"
-              aria-label="Buscar"
-              className="pl-9"
-              placeholder="Buscar por usuario o nombre…"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-            />
-          </div>
-        )
-      )}
 
       {loading ? (
         <TableSkeleton columnas={[25, 30, 25, 12]} />
