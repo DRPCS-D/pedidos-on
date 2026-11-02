@@ -12,6 +12,7 @@ import { useProductos, type DatosProducto } from '@/hooks/useProductos'
 import { formatGs, formatUsd } from '@/lib/format'
 import { calcularPrecio, pasosDe, textoPaso } from '@/lib/precio'
 import type { Producto } from '@/lib/tipos'
+import { cn } from '@/lib/utils'
 
 interface Form {
   codigo: string
@@ -40,6 +41,14 @@ const VACIO: Form = {
   tablaPrecioId: '',
   activo: true,
 }
+
+const PESTANAS = [
+  { clave: 'principal', etiqueta: 'Principal' },
+  { clave: 'tamanos', etiqueta: 'Tamaños' },
+  { clave: 'colores', etiqueta: 'Colores y fotos' },
+] as const
+
+type Pestana = (typeof PESTANAS)[number]['clave']
 
 const num = (s: string) => Number(s.replace(',', '.')) || 0
 
@@ -80,6 +89,7 @@ export function ProductoFormModal({
 
   const [f, setF] = useState<Form>(VACIO)
   const [colorNuevo, setColorNuevo] = useState('')
+  const [pestana, setPestana] = useState<Pestana>('principal')
   /** Al crear, el id se conoce recién tras guardar: desde ahí se pueden subir fotos. */
   const [idActual, setIdActual] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -106,6 +116,7 @@ export function ProductoFormModal({
         : VACIO,
     )
     setColorNuevo('')
+    setPestana('principal')
     setError(null)
     // Solo al abrir o cambiar de producto: una sincronización de fondo no debe borrar lo que se escribe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,7 +194,7 @@ export function ProductoFormModal({
       abierto={abierto}
       titulo={producto ? `Producto ${producto.codigo}` : idActual ? 'Producto creado' : 'Nuevo producto'}
       onCerrar={onCerrar}
-      ancho="max-w-2xl"
+      ancho="max-w-4xl"
       footer={
         puedeEditar ? (
           <>
@@ -206,208 +217,234 @@ export function ProductoFormModal({
         )
       }
     >
-      <fieldset disabled={!puedeEditar} className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Código (modelo) *">
-            <Input value={f.codigo} maxLength={40} autoFocus={!producto} onChange={(e) => set('codigo', e.target.value)} />
-          </Field>
-          <Field label="Descripción *" className="sm:col-span-2">
-            <Input value={f.descripcion} maxLength={300} onChange={(e) => set('descripcion', e.target.value)} />
-          </Field>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Marca">
-            <Select value={f.marcaId} onChange={(e) => set('marcaId', e.target.value)}>
-              <option value="">Sin marca</option>
-              {opciones(marcas, f.marcaId).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nombre}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Fábrica habitual" hint="Opcional. Al armar un pedido se sugieren primero sus productos.">
-            <Select value={f.proveedorId} onChange={(e) => set('proveedorId', e.target.value)}>
-              <option value="">Cualquiera</option>
-              {opciones(proveedores, f.proveedorId).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-
-        <div>
-          <Label>Colores</Label>
-          {f.colores.length > 0 && (
-            <ul className="mb-2 flex flex-wrap gap-1.5">
-              {f.colores.map((c) => (
-                <li key={c} className="flex items-center gap-1 rounded-full bg-secondary py-0.5 pl-2.5 pr-1 text-xs text-foreground">
-                  {c}
-                  <button
-                    type="button"
-                    aria-label={`Quitar ${c}`}
-                    className="rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                    onClick={() => set('colores', f.colores.filter((x) => x !== c))}
-                  >
-                    <X className="size-3" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Input
-            aria-label="Agregar color"
-            placeholder="Escribe un color y pulsa Enter (o varios separados por coma)"
-            value={colorNuevo}
-            maxLength={120}
-            onChange={(e) => setColorNuevo(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                agregarColor()
-              }
-            }}
-            onBlur={agregarColor}
-          />
-          <p className="mt-1 text-xs text-muted-foreground">Sin colores = el producto no tiene variantes de color.</p>
-        </div>
-
-        <div>
-          <Label>Tamaños en que viene</Label>
-          {grupos.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Primero crea tamaños en la pestaña Tamaños de Productos.</p>
-          ) : (
-            <div className="space-y-3 rounded-md border border-input p-3">
-              {grupos.map(([grupo, lista]) => {
-                const ids = lista.map((t) => t.id)
-                const todos = ids.every((id) => f.tamanoIds.includes(id))
-                return (
-                  <div key={grupo}>
-                    <div className="mb-1.5 flex items-center justify-between gap-3">
-                      <span className="text-xs font-medium text-foreground">{grupo}</span>
-                      <button
-                        type="button"
-                        className="text-xs text-primary hover:underline"
-                        onClick={() => alternarGrupo(ids, !todos)}
-                      >
-                        {todos ? 'Quitar todos' : 'Marcar todos'}
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {lista.map((t) => {
-                        const marcado = f.tamanoIds.includes(t.id)
-                        return (
-                          <label
-                            key={t.id}
-                            className={`flex cursor-pointer select-none items-center rounded-md border px-2.5 py-1 text-xs transition-colors ${
-                              marcado
-                                ? 'border-primary bg-primary/10 font-medium text-primary'
-                                : 'border-input text-muted-foreground hover:bg-accent'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              className="sr-only"
-                              checked={marcado}
-                              onChange={(e) => alternarTamano(t.id, e.target.checked)}
-                            />
-                            {t.nombre}
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-          <p className="mt-1 text-xs text-muted-foreground">Sin tamaños = el producto no tiene tallas (accesorios, por ejemplo).</p>
-        </div>
-
-        <Field label="Tabla de precios" hint="Fórmula con la que se calcula el precio de venta en USD a partir del costo.">
-          <Select value={f.tablaPrecioId} onChange={(e) => set('tablaPrecioId', e.target.value)}>
-            <option value="">Sin tabla (precio manual)</option>
-            {opciones(tablasPrecio, f.tablaPrecioId).map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.nombre}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Costo (USD)">
-            <Input inputMode="decimal" value={f.precioCosto} onChange={(e) => set('precioCosto', e.target.value)} />
-          </Field>
-          <Field label="Venta (USD)">
-            <div className="flex gap-2">
-              <Input inputMode="decimal" value={f.precioVentaUsd} onChange={(e) => set('precioVentaUsd', e.target.value)} />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                title={tabla ? `Calcular con la tabla ${tabla.nombre}` : 'Elige una tabla de precios'}
-                aria-label="Calcular precio de venta en dólares"
-                disabled={!calculo || !num(f.precioCosto)}
-                onClick={() => calculo && set('precioVentaUsd', String(calculo.total))}
-              >
-                <Calculator />
-              </Button>
-            </div>
-          </Field>
-          <Field
-            label="Venta (Gs)"
-            hint={tipoCambio ? `Cotización: ${formatGs(tipoCambio)} por USD` : 'Define el tipo de cambio en Productos > Precio.'}
+      <div className="mb-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border">
+        {PESTANAS.map(({ clave, etiqueta }) => (
+          <button
+            key={clave}
+            type="button"
+            onClick={() => setPestana(clave)}
+            className={cn(
+              '-mb-px shrink-0 border-b-2 px-4 py-2 text-sm transition-colors',
+              pestana === clave
+                ? 'border-primary font-medium text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
           >
-            <div className="flex gap-2">
-              <Input inputMode="numeric" value={f.precioVentaGs} onChange={(e) => set('precioVentaGs', e.target.value)} />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                title="Calcular desde el precio en USD"
-                aria-label="Calcular precio en guaraníes"
-                disabled={!tipoCambio || !num(f.precioVentaUsd)}
-                onClick={() => set('precioVentaGs', String(Math.round(num(f.precioVentaUsd) * tipoCambio)))}
-              >
-                <Calculator />
-              </Button>
-            </div>
-          </Field>
-        </div>
-        {calculo && num(f.precioCosto) > 0 && (
-          <div className="-mt-2 rounded-md bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">
-              {tabla?.nombre}: costo {formatUsd(calculo.costo)} → venta {formatUsd(calculo.total)}
-              {num(f.precioVentaUsd) !== calculo.total && <span className="ml-2 font-normal text-warning">(el precio de venta escrito es otro)</span>}
-            </p>
-            <ul className="mt-1">
-              {calculo.desglose.map((d, i) => (
-                <li key={i}>
-                  {d.paso.etiqueta} ({textoPaso(d.paso)}): + {formatUsd(d.monto)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <p className="-mt-2 text-xs text-muted-foreground">Los precios valen para todos los colores y tamaños del producto.</p>
+            {etiqueta}
+          </button>
+        ))}
+      </div>
 
-        {idActual && (
-          <Field label="Estado">
-            <Select value={f.activo ? '1' : '0'} onChange={(e) => set('activo', e.target.value === '1')}>
-              <option value="1">Activo</option>
-              <option value="0">Inactivo (no se ofrece en pedidos nuevos)</option>
+      {/* Las tres pestañas siguen montadas (solo se ocultan) para no perder lo escrito ni recargar las fotos. */}
+      <fieldset disabled={!puedeEditar} className="space-y-4">
+        <div className={cn('space-y-4', pestana !== 'principal' && 'hidden')}>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Código (modelo) *">
+              <Input value={f.codigo} maxLength={40} autoFocus={!producto} onChange={(e) => set('codigo', e.target.value)} />
+            </Field>
+            <Field label="Descripción *" className="sm:col-span-2">
+              <Input value={f.descripcion} maxLength={300} onChange={(e) => set('descripcion', e.target.value)} />
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Marca">
+              <Select value={f.marcaId} onChange={(e) => set('marcaId', e.target.value)}>
+                <option value="">Sin marca</option>
+                {opciones(marcas, f.marcaId).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nombre}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Fábrica habitual" hint="Opcional. Al armar un pedido se sugieren primero sus productos.">
+              <Select value={f.proveedorId} onChange={(e) => set('proveedorId', e.target.value)}>
+                <option value="">Cualquiera</option>
+                {opciones(proveedores, f.proveedorId).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+
+          <Field label="Tabla de precios" hint="Fórmula con la que se calcula el precio de venta en USD a partir del costo.">
+            <Select value={f.tablaPrecioId} onChange={(e) => set('tablaPrecioId', e.target.value)}>
+              <option value="">Sin tabla (precio manual)</option>
+              {opciones(tablasPrecio, f.tablaPrecioId).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nombre}
+                </option>
+              ))}
             </Select>
           </Field>
-        )}
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Costo (USD)">
+              <Input inputMode="decimal" value={f.precioCosto} onChange={(e) => set('precioCosto', e.target.value)} />
+            </Field>
+            <Field label="Venta (USD)">
+              <div className="flex gap-2">
+                <Input inputMode="decimal" value={f.precioVentaUsd} onChange={(e) => set('precioVentaUsd', e.target.value)} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  title={tabla ? `Calcular con la tabla ${tabla.nombre}` : 'Elige una tabla de precios'}
+                  aria-label="Calcular precio de venta en dólares"
+                  disabled={!calculo || !num(f.precioCosto)}
+                  onClick={() => calculo && set('precioVentaUsd', String(calculo.total))}
+                >
+                  <Calculator />
+                </Button>
+              </div>
+            </Field>
+            <Field
+              label="Venta (Gs)"
+              hint={tipoCambio ? `Cotización: ${formatGs(tipoCambio)} por USD` : 'Define el tipo de cambio en Productos > Precio.'}
+            >
+              <div className="flex gap-2">
+                <Input inputMode="numeric" value={f.precioVentaGs} onChange={(e) => set('precioVentaGs', e.target.value)} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  title="Calcular desde el precio en USD"
+                  aria-label="Calcular precio en guaraníes"
+                  disabled={!tipoCambio || !num(f.precioVentaUsd)}
+                  onClick={() => set('precioVentaGs', String(Math.round(num(f.precioVentaUsd) * tipoCambio)))}
+                >
+                  <Calculator />
+                </Button>
+              </div>
+            </Field>
+          </div>
+          {calculo && num(f.precioCosto) > 0 && (
+            <div className="-mt-2 rounded-md bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">
+                {tabla?.nombre}: costo {formatUsd(calculo.costo)} → venta {formatUsd(calculo.total)}
+                {num(f.precioVentaUsd) !== calculo.total && <span className="ml-2 font-normal text-warning">(el precio de venta escrito es otro)</span>}
+              </p>
+              <ul className="mt-1">
+                {calculo.desglose.map((d, i) => (
+                  <li key={i}>
+                    {d.paso.etiqueta} ({textoPaso(d.paso)}): + {formatUsd(d.monto)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="-mt-2 text-xs text-muted-foreground">Los precios valen para todos los colores y tamaños del producto.</p>
+
+          {idActual && (
+            <Field label="Estado">
+              <Select value={f.activo ? '1' : '0'} onChange={(e) => set('activo', e.target.value === '1')}>
+                <option value="1">Activo</option>
+                <option value="0">Inactivo (no se ofrece en pedidos nuevos)</option>
+              </Select>
+            </Field>
+          )}
+
+        </div>
+
+        <div className={cn(pestana !== 'tamanos' && 'hidden')}>
+          <div>
+            <Label>Tamaños en que viene</Label>
+            {grupos.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Primero crea tamaños en la pestaña Tamaños de Productos.</p>
+            ) : (
+              <div className="space-y-3 rounded-md border border-input p-3">
+                {grupos.map(([grupo, lista]) => {
+                  const ids = lista.map((t) => t.id)
+                  const todos = ids.every((id) => f.tamanoIds.includes(id))
+                  return (
+                    <div key={grupo}>
+                      <div className="mb-1.5 flex items-center justify-between gap-3">
+                        <span className="text-xs font-medium text-foreground">{grupo}</span>
+                        <button
+                          type="button"
+                          className="text-xs text-primary hover:underline"
+                          onClick={() => alternarGrupo(ids, !todos)}
+                        >
+                          {todos ? 'Quitar todos' : 'Marcar todos'}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {lista.map((t) => {
+                          const marcado = f.tamanoIds.includes(t.id)
+                          return (
+                            <label
+                              key={t.id}
+                              className={`flex cursor-pointer select-none items-center rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                                marcado
+                                  ? 'border-primary bg-primary/10 font-medium text-primary'
+                                  : 'border-input text-muted-foreground hover:bg-accent'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="sr-only"
+                                checked={marcado}
+                                onChange={(e) => alternarTamano(t.id, e.target.checked)}
+                              />
+                              {t.nombre}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <p className="mt-1 text-xs text-muted-foreground">Sin tamaños = el producto no tiene tallas (accesorios, por ejemplo).</p>
+          </div>
+        </div>
+
+        <div className={cn(pestana !== 'colores' && 'hidden')}>
+          <div>
+            <Label>Colores</Label>
+            {f.colores.length > 0 && (
+              <ul className="mb-2 flex flex-wrap gap-1.5">
+                {f.colores.map((c) => (
+                  <li key={c} className="flex items-center gap-1 rounded-full bg-secondary py-0.5 pl-2.5 pr-1 text-xs text-foreground">
+                    {c}
+                    <button
+                      type="button"
+                      aria-label={`Quitar ${c}`}
+                      className="rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                      onClick={() => set('colores', f.colores.filter((x) => x !== c))}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Input
+              aria-label="Agregar color"
+              placeholder="Escribe un color y pulsa Enter (o varios separados por coma)"
+              value={colorNuevo}
+              maxLength={120}
+              onChange={(e) => setColorNuevo(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  agregarColor()
+                }
+              }}
+              onBlur={agregarColor}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">Sin colores = el producto no tiene variantes de color.</p>
+          </div>
+        </div>
 
         {error && <ErrorBox mensaje={error} />}
       </fieldset>
 
-      <div className="mt-5 border-t border-border pt-4">
+      <div className={cn('mt-5 border-t border-border pt-4', pestana !== 'colores' && 'hidden')}>
         <h3 className="mb-2 text-sm font-semibold text-foreground">Fotos</h3>
         <Adjuntos entidad="producto" id={idActual} puedeEditar={puedeEditar} colores={producto?.colores ?? f.colores} />
       </div>
