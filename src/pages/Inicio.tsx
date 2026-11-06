@@ -6,10 +6,12 @@ import { CajaScroll } from '@/components/ui/caja-scroll'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCatalogo } from '@/hooks/useCatalogo'
+import { useConfig } from '@/hooks/useConfig'
 import { useContenedores } from '@/hooks/useContenedores'
 import { usePedidos } from '@/hooks/usePedidos'
 import { formatFecha, hoyIso } from '@/lib/format'
-import { ESTADO_PEDIDO_LABEL, ROL_LABEL } from '@/lib/tipos'
+import { aDia, fechaDia, proyectar } from '@/lib/proyeccion'
+import { ROL_LABEL } from '@/lib/tipos'
 
 interface Modulo {
   to: string
@@ -32,6 +34,7 @@ export default function Inicio() {
   const { data: pedidos, loading: cargandoPedidos } = usePedidos()
   const { data: contenedores, loading: cargandoContenedores } = useContenedores()
   const { nombres: nombreProveedor } = useCatalogo('proveedores')
+  const { plazos } = useConfig()
 
   /** Pedidos en fabricación. Primero los que llevan más tiempo en ese estado. */
   const enFabricacion = useMemo(
@@ -51,6 +54,14 @@ export default function Inicio() {
   )
 
   const hoy = hoyIso()
+
+  /** Días que lleva el pedido en fabricación y si ya pasó el plazo (descontando las pausas de la fábrica): posible olvido de cambiar el estado. */
+  const tiempoEnFabricacion = (desde: string) => {
+    const inicio = fechaDia(desde)
+    const dias = Math.max(0, (aDia(hoy) ?? 0) - (aDia(inicio) ?? 0))
+    const vence = inicio ? proyectar(inicio, plazos.diasFabricacion, 0, plazos.pausas)?.finFabricacion : undefined
+    return { dias, vencio: vence ? vence < hoy : false, vence }
+  }
 
   const modulos: Modulo[] = [
     { to: '/pedidos', titulo: 'Pedidos a fábrica', descripcion: 'Pedidos a fábrica, estados y documentos.', icono: PackageSearch },
@@ -81,17 +92,24 @@ export default function Inicio() {
           ) : (
             <CajaScroll alto="max-h-48">
               <ul className="divide-y divide-border">
-                {enFabricacion.map((p) => (
-                  <li key={p.id}>
-                    <Link to={`/pedidos/${p.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm hover:opacity-80">
-                      <span className="font-medium text-foreground">{p.folio}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {nombreProveedor.get(p.proveedorId) ?? '—'}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{ESTADO_PEDIDO_LABEL[p.estado]} {formatFecha(p.fechaEstado)}</span>
-                    </Link>
-                  </li>
-                ))}
+                {enFabricacion.map((p) => {
+                  const t = tiempoEnFabricacion(p.fechaEstado)
+                  return (
+                    <li key={p.id}>
+                      <Link to={`/pedidos/${p.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm hover:opacity-80">
+                        <span className="font-medium text-foreground">{p.folio}</span>
+                        <span className="text-xs text-muted-foreground">{nombreProveedor.get(p.proveedorId) ?? '—'}</span>
+                        <span
+                          className={`tabular text-xs ${t.vencio ? 'font-medium text-warning' : 'text-muted-foreground'}`}
+                          title={`En fabricación desde el ${formatFecha(p.fechaEstado)}${t.vence ? ` · plazo hasta el ${formatFecha(t.vence)}` : ''}`}
+                        >
+                          {t.dias === 0 ? 'Desde hoy' : `Hace ${t.dias} ${t.dias === 1 ? 'día' : 'días'}`}
+                          {t.vencio && ' · ¿ya está fabricado?'}
+                        </span>
+                      </Link>
+                    </li>
+                  )
+                })}
               </ul>
             </CajaScroll>
           )}
