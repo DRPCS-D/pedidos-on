@@ -309,7 +309,12 @@ function FormCatalogo({
           )}
           {error && <ErrorBox mensaje={error} />}
         </fieldset>
-        {registro && extra && <div className="border-t border-border pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">{extra(registro)}</div>}
+        {registro && extra && (
+          // En pantallas anchas la columna mide lo que el formulario: lo de adentro se recorta a ese alto y se recorre con scroll.
+          <div className="relative border-t border-border pt-4 md:border-l md:border-t-0 md:pt-0">
+            <div className="md:absolute md:inset-y-0 md:left-6 md:right-0">{extra(registro)}</div>
+          </div>
+        )}
       </div>
     </Modal>
   )

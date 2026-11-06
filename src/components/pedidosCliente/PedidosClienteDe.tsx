@@ -8,15 +8,16 @@ import { formatFecha } from '@/lib/format'
 export function PedidosClienteDe({ clienteId }: { clienteId: string }) {
   const { data } = usePedidosCliente()
   const { porId: pedidos } = usePedidos()
-  const lista = data.filter((p) => p.clienteId === clienteId)
+  // Los más nuevos arriba.
+  const lista = data.filter((p) => p.clienteId === clienteId).sort((a, b) => b.fecha.localeCompare(a.fecha) || b.folio.localeCompare(a.folio))
 
   return (
-    <div>
-      <h3 className="mb-2 text-sm font-semibold text-foreground">Pedidos ({lista.length})</h3>
+    <div className="flex h-full flex-col">
+      <h3 className="mb-2 shrink-0 text-sm font-semibold text-foreground">Pedidos ({lista.length})</h3>
       {lista.length === 0 ? (
         <p className="text-xs text-muted-foreground">Todavía no tiene pedidos.</p>
       ) : (
-        <ul className="max-h-96 divide-y divide-border overflow-y-auto rounded-md border border-border">
+        <ul className="max-h-96 min-h-0 divide-y divide-border overflow-y-auto md:max-h-none rounded-md border border-border">
           {lista.map((p) => (
             <li key={p.id}>
               <Link
