@@ -11,12 +11,12 @@ export function PedidosClienteDe({ clienteId }: { clienteId: string }) {
   const lista = data.filter((p) => p.clienteId === clienteId)
 
   return (
-    <div className="mt-5 border-t border-border pt-4">
+    <div>
       <h3 className="mb-2 text-sm font-semibold text-foreground">Pedidos ({lista.length})</h3>
       {lista.length === 0 ? (
         <p className="text-xs text-muted-foreground">Todavía no tiene pedidos.</p>
       ) : (
-        <ul className="max-h-60 divide-y divide-border overflow-y-auto rounded-md border border-border">
+        <ul className="max-h-96 divide-y divide-border overflow-y-auto rounded-md border border-border">
           {lista.map((p) => (
             <li key={p.id}>
               <Link

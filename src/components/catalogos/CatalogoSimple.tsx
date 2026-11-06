@@ -255,6 +255,8 @@ function FormCatalogo({
       abierto={abierto}
       titulo={registro ? `Editar ${singular}` : `${femenino ? 'Nueva' : 'Nuevo'} ${singular}`}
       onCerrar={onCerrar}
+      // Con pedidos asociados, la ficha se ensancha y los muestra al lado del formulario.
+      ancho={registro && extra ? 'max-w-4xl' : undefined}
       footer={
         puedeEditar ? (
           <>
@@ -277,36 +279,38 @@ function FormCatalogo({
         )
       }
     >
-      <fieldset disabled={!puedeEditar} className="space-y-4">
-        {campos.map((c, i) => (
-          <Field key={c.clave} label={c.requerido ? `${c.label} *` : c.label} hint={c.hint}>
-            {c.multilinea ? (
-              <Textarea
-                value={valores[c.clave] ?? ''}
-                maxLength={c.max}
-                onChange={(e) => setValores({ ...valores, [c.clave]: e.target.value })}
-              />
-            ) : (
-              <Input
-                value={valores[c.clave] ?? ''}
-                maxLength={c.max}
-                autoFocus={i === 0 && !registro}
-                onChange={(e) => setValores({ ...valores, [c.clave]: e.target.value })}
-              />
-            )}
-          </Field>
-        ))}
-        {registro && (
-          <Field label="Estado" hint="Un registro inactivo no se ofrece al crear pedidos o productos nuevos.">
-            <Select value={activo ? '1' : '0'} onChange={(e) => setActivo(e.target.value === '1')}>
-              <option value="1">Activo</option>
-              <option value="0">Inactivo</option>
-            </Select>
-          </Field>
-        )}
-        {error && <ErrorBox mensaje={error} />}
-      </fieldset>
-      {registro && extra?.(registro)}
+      <div className={registro && extra ? 'grid gap-6 md:grid-cols-2' : undefined}>
+        <fieldset disabled={!puedeEditar} className="space-y-4">
+          {campos.map((c, i) => (
+            <Field key={c.clave} label={c.requerido ? `${c.label} *` : c.label} hint={c.hint}>
+              {c.multilinea ? (
+                <Textarea
+                  value={valores[c.clave] ?? ''}
+                  maxLength={c.max}
+                  onChange={(e) => setValores({ ...valores, [c.clave]: e.target.value })}
+                />
+              ) : (
+                <Input
+                  value={valores[c.clave] ?? ''}
+                  maxLength={c.max}
+                  autoFocus={i === 0 && !registro}
+                  onChange={(e) => setValores({ ...valores, [c.clave]: e.target.value })}
+                />
+              )}
+            </Field>
+          ))}
+          {registro && (
+            <Field label="Estado" hint="Un registro inactivo no se ofrece al crear pedidos o productos nuevos.">
+              <Select value={activo ? '1' : '0'} onChange={(e) => setActivo(e.target.value === '1')}>
+                <option value="1">Activo</option>
+                <option value="0">Inactivo</option>
+              </Select>
+            </Field>
+          )}
+          {error && <ErrorBox mensaje={error} />}
+        </fieldset>
+        {registro && extra && <div className="border-t border-border pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">{extra(registro)}</div>}
+      </div>
     </Modal>
   )
 }
