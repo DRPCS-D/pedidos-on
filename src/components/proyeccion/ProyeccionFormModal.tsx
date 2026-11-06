@@ -73,6 +73,9 @@ export function ProyeccionFormModal({
       : proyectarInverso(fecha, diasFab, diasTra, pausas)
     : null
   const sinPausa = proy ? aniosSinPausa(proy.inicio, proy.finFabricacion, pausas) : []
+  // Con fecha final: si el inicio que resulta ya pasó, el pedido no llega a tiempo ni empezando hoy.
+  const limitePasado = modo === 'final' && proy !== null && (aDia(proy.inicio) ?? 0) < (aDia(hoyIso()) ?? 0)
+  const llegadaSiHoy = limitePasado ? (proyectar(hoyIso(), diasFab, diasTra, pausas)?.llegada ?? null) : null
   const antes = modo === 'final' && proy && aDia(fecha) !== null ? aDia(fecha)! - aDia(proy.llegada)! : 0
 
   async function onGuardar() {
@@ -219,13 +222,20 @@ export function ProyeccionFormModal({
                 <dd>{proy.diasPausa}</dd>
               </div>
             </dl>
-            {modo === 'final' && <p className="mt-2 text-xs text-muted-foreground">{textoDiasHasta(proy.inicio, hoyIso(), 'límite')}</p>}
+            {modo === 'final' && !limitePasado && <p className="mt-2 text-xs text-muted-foreground">{textoDiasHasta(proy.inicio, hoyIso(), 'límite')}</p>}
             {antes > 0 && (
               <p className="mt-1 text-xs text-warning">
                 La fabricación terminaría justo en una pausa, así que llegaría {antes} {antes === 1 ? 'día' : 'días'} antes de la fecha pedida.
               </p>
             )}
           </div>
+        )}
+
+        {limitePasado && proy && llegadaSiHoy && (
+          <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
+            {textoDiasHasta(proy.inicio, hoyIso(), 'límite')} Para llegar el {formatFecha(fecha)} el pedido tenía que empezar el {formatFecha(proy.inicio)}; si empieza hoy,
+            llegaría el {formatFecha(llegadaSiHoy)}.
+          </p>
         )}
 
         {sinPausa.length > 0 && (
