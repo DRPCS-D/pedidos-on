@@ -9,7 +9,6 @@ import { useCatalogo } from '@/hooks/useCatalogo'
 import { useContenedores } from '@/hooks/useContenedores'
 import { usePedidos } from '@/hooks/usePedidos'
 import { formatFecha, hoyIso } from '@/lib/format'
-import { cargaDePedido } from '@/lib/pedidos'
 import { ESTADO_PEDIDO_LABEL, ROL_LABEL } from '@/lib/tipos'
 
 interface Modulo {
@@ -34,11 +33,11 @@ export default function Inicio() {
   const { data: contenedores, loading: cargandoContenedores } = useContenedores()
   const { nombres: nombreProveedor } = useCatalogo('proveedores')
 
-  /** Fabricados que todavía no tienen contenedor: hay que embarcarlos. Primero los que llevan más tiempo esperando. */
-  const sinEmbarcar = useMemo(
+  /** Pedidos en fabricación. Primero los que llevan más tiempo en ese estado. */
+  const enFabricacion = useMemo(
     () =>
       pedidos
-        .filter((p) => p.estado === 'fabricado' && cargaDePedido(p) === 'sin_cargar')
+        .filter((p) => p.estado === 'en_fabricacion')
         .sort((a, b) => a.fechaEstado.localeCompare(b.fechaEstado)),
     [pedidos],
   )
@@ -74,15 +73,15 @@ export default function Inicio() {
       </div>
 
       <div className="mb-7 grid gap-4 lg:grid-cols-2">
-        <Tarjeta titulo="Fabricados, sin embarcar">
+        <Tarjeta titulo="En fabricación">
           {cargandoPedidos ? (
             <Skeleton className="h-16 w-full" />
-          ) : sinEmbarcar.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay pedidos fabricados esperando contenedor.</p>
+          ) : enFabricacion.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No hay pedidos en fabricación.</p>
           ) : (
             <CajaScroll alto="max-h-48">
               <ul className="divide-y divide-border">
-                {sinEmbarcar.map((p) => (
+                {enFabricacion.map((p) => (
                   <li key={p.id}>
                     <Link to={`/pedidos/${p.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm hover:opacity-80">
                       <span className="font-medium text-foreground">{p.folio}</span>
