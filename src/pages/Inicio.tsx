@@ -1,4 +1,4 @@
-import { ClipboardList, Container, Factory, PackageSearch, Package, SlidersHorizontal, Users, UserRound } from 'lucide-react'
+import { ClipboardList, Container, Factory, Hammer, PackageSearch, Package, Ship, SlidersHorizontal, Users, UserRound } from 'lucide-react'
 import { useMemo, type ComponentType, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { BadgeEstadoContenedor } from '@/components/pedidos/badges'
@@ -20,10 +20,13 @@ interface Modulo {
   icono: ComponentType<{ className?: string }>
 }
 
-function Tarjeta({ titulo, children }: { titulo: string; children: ReactNode }) {
+function Tarjeta({ titulo, icono: Icono, children }: { titulo: string; icono: ComponentType<{ className?: string }>; children: ReactNode }) {
   return (
     <section className="rounded-lg border border-border bg-card p-5 shadow-xs">
-      <h2 className="mb-3 text-sm font-semibold text-foreground">{titulo}</h2>
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+        <Icono className="size-4 text-primary" />
+        {titulo}
+      </h2>
       {children}
     </section>
   )
@@ -84,7 +87,7 @@ export default function Inicio() {
       </div>
 
       <div className="mb-7 grid gap-4 lg:grid-cols-2">
-        <Tarjeta titulo="En fabricación">
+        <Tarjeta titulo="En fabricación" icono={Hammer}>
           {cargandoPedidos ? (
             <Skeleton className="h-16 w-full" />
           ) : enFabricacion.length === 0 ? (
@@ -115,7 +118,7 @@ export default function Inicio() {
           )}
         </Tarjeta>
 
-        <Tarjeta titulo="Próximas llegadas">
+        <Tarjeta titulo="Próximas llegadas" icono={Ship}>
           {cargandoContenedores ? (
             <Skeleton className="h-16 w-full" />
           ) : proximasLlegadas.length === 0 ? (
