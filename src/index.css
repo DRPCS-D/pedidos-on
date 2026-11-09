@@ -123,6 +123,21 @@
   }
 
   /* Códigos y fechas se leen mejor con cifras de ancho fijo */
+  @media print {
+    @page {
+      size: A4 portrait;
+      margin: 8mm;
+    }
+    html,
+    body {
+      background: #fff !important;
+      color: #000 !important;
+    }
+    * {
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+  }
   .tabular {
     font-variant-numeric: tabular-nums;
   }

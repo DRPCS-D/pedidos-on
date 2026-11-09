@@ -17,10 +17,10 @@ import type { ProyeccionGuardada } from '@/lib/tipos'
 
 function Dato({ etiqueta, valor, nota, resaltar }: { etiqueta: string; valor: string; nota?: string; resaltar?: boolean }) {
   return (
-    <div className={`rounded-lg border p-4 ${resaltar ? 'border-red-500/40 bg-red-500/10' : 'border-border bg-card'}`}>
-      <p className="text-xs text-muted-foreground">{etiqueta}</p>
-      <p className="tabular mt-0.5 text-lg font-semibold text-foreground">{valor}</p>
-      {nota && <p className="mt-0.5 text-xs text-muted-foreground">{nota}</p>}
+    <div className={`rounded-lg border p-4 print:rounded-sm print:border-black print:p-1.5 ${resaltar ? 'border-red-500/40 bg-red-500/10 print:bg-red-100' : 'border-border bg-card'}`}>
+      <p className="text-xs text-muted-foreground print:text-[9px] print:font-medium print:text-black">{etiqueta}</p>
+      <p className="tabular mt-0.5 text-lg font-semibold text-foreground print:mt-0 print:text-sm print:font-bold print:text-black">{valor}</p>
+      {nota && <p className="mt-0.5 text-xs text-muted-foreground print:mt-0 print:text-[9px] print:leading-tight print:text-black">{nota}</p>}
     </div>
   )
 }
@@ -39,7 +39,7 @@ function Cuerpo({ g }: { g: ProyeccionGuardada }) {
 
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 print:grid-cols-5 print:gap-1.5">
         {esFinal ? (
           <>
             <Dato etiqueta="El cliente quiere recibir" valor={formatFecha(base)} />
@@ -67,14 +67,14 @@ function Cuerpo({ g }: { g: ProyeccionGuardada }) {
         {!esFinal && <Dato etiqueta="Duración total" valor={`${proy.diasTotal} días`} nota={`unos ${meses.toFixed(1).replace('.', ',')} meses`} />}
       </div>
 
-      <p className="mt-3 text-xs text-muted-foreground">
+      <p className="mt-3 text-xs text-muted-foreground print:mt-1.5 print:text-[9px] print:leading-tight print:text-black">
         {g.diasFabricacion} días de fabricación (sin contar las pausas) y {g.diasTransito} de transporte.{' '}
         {pausas.length > 0
           ? `Pausas descontadas: ${pausas.map((p) => `${p.anio} (${formatFecha(p.desde)} al ${formatFecha(p.hasta)})`).join(', ')}.`
           : 'Sin pausas.'}
       </p>
 
-      <div className="mt-5">
+      <div className="mt-5 print:mt-2">
         <CalendarioProyeccion proyeccion={proy} />
       </div>
     </>
@@ -126,10 +126,10 @@ export default function ProyeccionDetalle() {
         <ArrowLeft className="size-4" /> Proyecciones
       </Link>
 
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3 print:mb-2">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">{g.nombre}</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-lg font-semibold text-foreground print:text-base print:font-bold print:text-black">{g.nombre}</h1>
+          <p className="text-sm text-muted-foreground print:text-[10px] print:text-black">
             Calculada desde la {g.modo === 'final' ? 'fecha final' : 'fecha de inicio'} ({formatFecha(g.fechaBase)})
             {g.notas ? ` · ${g.notas}` : ''}
           </p>
