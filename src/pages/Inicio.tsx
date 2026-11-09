@@ -103,7 +103,7 @@ export default function Inicio() {
           ) : enFabricacion.length === 0 ? (
             <p className="text-sm text-muted-foreground">No hay pedidos en fabricación.</p>
           ) : (
-            <CajaScroll alto="max-h-84">
+            <CajaScroll alto="max-h-188">
               <ul className="divide-y divide-border">
                 {enFabricacion.map((p) => {
                   const t = avanceFabricacion(p.fechaEstado)
@@ -139,7 +139,7 @@ export default function Inicio() {
           ) : proximasLlegadas.length === 0 ? (
             <p className="text-sm text-muted-foreground">No hay contenedores con fecha de llegada estimada.</p>
           ) : (
-            <CajaScroll alto="max-h-84">
+            <CajaScroll alto="max-h-188">
               <ul className="divide-y divide-border">
                 {proximasLlegadas.map((c) => {
                   const v = avanceViaje(c.etd, c.eta)
