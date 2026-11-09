@@ -210,6 +210,8 @@ export interface LineaPedido {
   /** Unidades de este tamaño en una caja (curva) y cajas del color; 0 si se cargó solo la cantidad. */
   porCaja: number
   cajas: number
+  /** m³ de una caja de la curva del color (0 = sin dato). */
+  cbmCaja: number
   precioCosto: number
   precioVentaUsd: number
   precioVentaGs: number

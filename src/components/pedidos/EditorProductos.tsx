@@ -17,6 +17,7 @@ import {
   type EjesGrilla,
   type TamanoRef,
 } from '@/lib/grilla'
+import { formatCbm } from '@/lib/cbm'
 import { totalesLineas } from '@/lib/pedidos'
 import type { Producto } from '@/lib/tipos'
 
@@ -45,6 +46,8 @@ export interface GrupoForm {
   curva: Record<string, Record<string, string>>
   /** Cajas de cada color. */
   cajas: Record<string, string>
+  /** m³ de una caja de cada color (solo en pedidos a fábrica). */
+  cbm: Record<string, string>
 }
 
 /** Lo que se necesita de una línea ya guardada para volver a editarla. */
@@ -60,6 +63,7 @@ export interface LineaEditable {
   cantidad: number
   porCaja: number
   cajas: number
+  cbmCaja?: number
   /** Ya cargada o asignada: la cantidad no puede quedar por debajo. */
   comprometido: number
   precioCosto?: number
@@ -103,6 +107,7 @@ export function useConstructorGrupos() {
       precioVentaGs: texto(p.precioVentaGs),
       curva: {},
       cajas: {},
+      cbm: {},
     }
   }
 
@@ -128,6 +133,7 @@ export function useConstructorGrupos() {
         precioVentaGs: texto(ls[0].precioVentaGs),
         curva: {},
         cajas: {},
+        cbm: {},
       }
       for (const l of ls) {
         const k = claveDeLinea(ejes, l)
@@ -139,6 +145,7 @@ export function useConstructorGrupos() {
         const conCurva = l.porCaja > 0 && l.cajas > 0
         g.curva[color] = { ...g.curva[color], [l.tamanoId]: String(conCurva ? l.porCaja : l.cantidad) }
         g.cajas[color] = String(conCurva ? l.cajas : 1)
+        if (conCurva && l.cbmCaja) g.cbm[color] = String(l.cbmCaja)
       }
       return g
     })
@@ -176,6 +183,7 @@ export function lineasDeGrupos(
           // Curva y cajas se guardan para poder mostrar «5 cajas de esta curva».
           porCaja: conTamanos ? num(g.curva[color]?.[t.id] ?? '') : 0,
           cajas: conTamanos ? num(g.cajas[color] ?? '') : 0,
+          cbmCaja: conTamanos ? num(g.cbm[color] ?? '') : 0,
           precioCosto: num(g.precioCosto),
           precioVentaUsd: num(g.precioVentaUsd),
           precioVentaGs: num(g.precioVentaGs),
@@ -187,6 +195,11 @@ export function lineasDeGrupos(
     }
   }
   return { lineas, error: null }
+}
+
+/** m³ de un producto en el pedido: cajas de cada color × m³ de su caja. */
+export function cbmDeGrupo(g: GrupoForm): number {
+  return g.ejes.colores.reduce((s, c) => s + num(g.cajas[c] ?? '') * num(g.cbm[c] ?? ''), 0)
 }
 
 export function totalesDeGrupos(grupos: GrupoForm[]) {
@@ -355,6 +368,7 @@ export function EditorProductos({
                   <span className="flex items-center gap-3">
                     <span className="tabular text-xs text-muted-foreground">
                       {totalGrilla(g.cantidades).toLocaleString('es-PY')} unid.
+                      {modo === 'fabrica' && cbmDeGrupo(g) > 0 && ` · ${formatCbm(cbmDeGrupo(g))}`}
                     </span>
                     <Button
                       variant="ghost"
@@ -396,6 +410,7 @@ export function EditorProductos({
                               ))}
                               <th className="px-2 pb-1 text-right font-medium">Por caja</th>
                               <th className="px-1 pb-1 text-center font-medium">Cajas</th>
+                              {modo === 'fabrica' && <th className="px-1 pb-1 text-center font-medium">m³ por caja</th>}
                               <th className="px-2 pb-1 text-right font-medium">Total</th>
                             </tr>
                           </thead>
@@ -438,6 +453,18 @@ export function EditorProductos({
                                       onChange={(e) => cambiarCajas(g, color, e.target.value)}
                                     />
                                   </td>
+                                  {modo === 'fabrica' && (
+                                    <td className="px-1 py-0.5">
+                                      <Input
+                                        inputMode="decimal"
+                                        aria-label={`Metros cúbicos de una caja de ${[g.codigo, color].filter(Boolean).join(' ')}`}
+                                        className="h-8 w-20 px-1 text-center text-xs"
+                                        placeholder="0,000"
+                                        value={g.cbm[color] ?? ''}
+                                        onChange={(e) => cambiar(g.clave, { cbm: { ...g.cbm, [color]: e.target.value } })}
+                                      />
+                                    </td>
+                                  )}
                                   <td className="tabular px-2 text-right text-xs font-medium text-foreground">
                                     {totalFila.toLocaleString('es-PY')}
                                   </td>
@@ -450,6 +477,7 @@ export function EditorProductos({
                       <p className="text-xs text-muted-foreground">
                         Escribe la curva de cada color (unidades de cada tamaño en una caja) y sus cajas. Total = unidades por caja ×
                         cajas (ej. 7 × 5 = 35).
+                        {modo === 'fabrica' && ' El m³ por caja es el volumen de una caja de esa curva (largo × ancho × alto en metros); con él el contenedor calcula cuánto carga.'}
                       </p>
                     </>
                   )}

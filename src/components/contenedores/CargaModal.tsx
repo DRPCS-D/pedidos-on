@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/modal'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import { useContenedores } from '@/hooks/useContenedores'
 import { usePedidos } from '@/hooks/usePedidos'
+import { CAPACIDAD_CBM, cbmPorUnidad, formatCbm } from '@/lib/cbm'
 import { formatCantidad, normalizar } from '@/lib/format'
 import { agruparPorProducto, pendienteLinea } from '@/lib/pedidos'
 import type { Contenedor, LineaPedido } from '@/lib/tipos'
@@ -161,6 +162,30 @@ export function CargaModal({
     return t
   }, [candidatos, cajas, unidades])
 
+  /** m³ que llevaría este contenedor con lo escrito, y unidades que no cuentan por no tener m³. */
+  const volumen = useMemo(() => {
+    const porUnidad = new Map<string, number>()
+    for (const p of pedidos) for (const [id, m] of cbmPorUnidad(p.lineas)) porUnidad.set(id, m)
+    let cbm = 0
+    let sinDato = 0
+    const sumar = (lineaId: string, cantidad: number) => {
+      const m = porUnidad.get(lineaId) ?? 0
+      if (m > 0) cbm += cantidad * m
+      else sinDato += cantidad
+    }
+    for (const { items } of candidatos) {
+      for (const it of items) {
+        if (it.tipo === 'cajas') for (const x of it.lineas) sumar(x.l.id, num(cajas[it.clave]) * x.l.porCaja)
+        else sumar(it.linea.l.id, num(unidades[it.linea.l.id]))
+      }
+    }
+    // Lo que lleva el contenedor y quedó fuera del filtro de búsqueda también cuenta.
+    const visibles = new Set(candidatos.flatMap(({ items }) => items.flatMap((it) => (it.tipo === 'cajas' ? it.lineas.map((x) => x.l.id) : [it.linea.l.id]))))
+    for (const [lineaId, cantidad] of enEste) if (!visibles.has(lineaId)) sumar(lineaId, cantidad)
+    return { cbm, sinDato }
+  }, [pedidos, candidatos, cajas, unidades, enEste])
+  const capacidad = CAPACIDAD_CBM[contenedor.tipo]
+
   function cargarPedido(items: Item[]) {
     setCajas((c) => ({
       ...c,
@@ -228,7 +253,15 @@ export function CargaModal({
       footer={
         <>
           <span className="mr-auto self-center text-xs text-muted-foreground">
-            {formatCantidad(total)} unidades en este contenedor
+            {formatCantidad(total)} unidades
+            {(volumen.cbm > 0 || capacidad > 0) && (
+              <span className={capacidad > 0 && volumen.cbm > capacidad ? 'font-medium text-destructive' : 'text-foreground'}>
+                {' · '}
+                {formatCbm(volumen.cbm)}
+                {capacidad > 0 && ` de ${formatCbm(capacidad)}`}
+              </span>
+            )}
+            {volumen.sinDato > 0 && ` · ${formatCantidad(volumen.sinDato)} unid. sin m³`}
           </span>
           <Button variant="outline" onClick={onCerrar} disabled={guardando}>
             Cancelar
@@ -293,6 +326,7 @@ export function CargaModal({
                           <p className="text-[11px] text-muted-foreground">
                             Curva: {it.lineas.map((x) => `${x.l.tamano || '·'}×${x.l.porCaja}`).join('  ')} ={' '}
                             {formatCantidad(it.porCaja)} por caja
+                            {it.lineas[0].l.cbmCaja > 0 && ` · ${formatCbm(it.lineas[0].l.cbmCaja)} la caja`}
                           </p>
                         </td>
                         <td className="tabular whitespace-nowrap px-3 py-1.5 text-right text-xs text-muted-foreground">

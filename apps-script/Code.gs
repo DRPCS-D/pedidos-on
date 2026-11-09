@@ -49,7 +49,7 @@ var ENCABEZADOS = {
             'creadoPor', 'fechaCreacion', 'fechaEstado',
             'descuentoTipo', 'descuentoValor', 'descuentoMotivo', 'cargos'],
   PedidoLineas: ['id', 'pedidoId', 'productoId', 'codigo', 'descripcion', 'color', 'marca', 'tamano', 'tamanoId',
-                 'cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'porCaja', 'cajas'],
+                 'cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'porCaja', 'cajas', 'cbmCaja'],
   Contenedores: ['id', 'numero', 'tipo', 'naviera', 'bl', 'puertoOrigen', 'puertoDestino', 'etd', 'eta',
                  'estado', 'notas', 'creadoPor', 'fechaCreacion'],
   Cargas: ['id', 'contenedorId', 'pedidoId', 'lineaId', 'cantidad'],
@@ -65,7 +65,7 @@ var ENCABEZADOS = {
 };
 
 /** Columnas numéricas y de casilla: el resto se guarda como texto (formato @). */
-var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes', 'orden', 'porCaja', 'cajas', 'descuentoValor', 'anterior', 'nuevo'];
+var NUMERICAS = ['cantidad', 'precioCosto', 'precioVentaUsd', 'precioVentaGs', 'bytes', 'orden', 'porCaja', 'cajas', 'cbmCaja', 'descuentoValor', 'anterior', 'nuevo'];
 var CASILLAS = ['activo', 'principal'];
 /** Columnas con fecha sin hora ('yyyy-MM-dd'); las demás fechas son ISO con hora. */
 var FECHAS_DIA = ['fechaPedido', 'fechaEstado', 'etd', 'eta', 'inicio', 'finFabricacion', 'llegada', 'fechaBase'];
@@ -940,6 +940,8 @@ function guardarLineasDe_(cfg, lineasIn) {
     var cajas = numero_(li.cajas, 'Las cajas');
     if (porCaja > 0 && cajas > 0) cantidad = Math.round(porCaja * cajas * 1000) / 1000;
     else { porCaja = 0; cajas = 0; }
+    // m³ de una caja de la curva (solo pedidos a fábrica); sin curva no hay CBM.
+    var cbmCaja = cfg.conCosto && porCaja > 0 ? Math.round(numero_(li.cbmCaja, 'El CBM por caja') * 10000) / 10000 : 0;
     if (!(cantidad > 0)) throw new Error('Cada línea debe tener una cantidad mayor que cero.');
     var precios = {
       precioVentaUsd: numero_(li.precioVentaUsd, 'El precio de venta en USD'),
@@ -956,6 +958,7 @@ function guardarLineasDe_(cfg, lineasIn) {
       actual.cantidad = cantidad;
       actual.porCaja = porCaja;
       actual.cajas = cajas;
+      if (cfg.conCosto) actual.cbmCaja = cbmCaja;
       Object.keys(precios).forEach(function (k) { actual[k] = precios[k]; });
       escribir_(cfg.hoja, actual);
       return;
@@ -985,6 +988,7 @@ function guardarLineasDe_(cfg, lineasIn) {
       tamano: tamanos[tamanoId] || '', tamanoId: tamanoId, cantidad: cantidad,
       porCaja: porCaja, cajas: cajas
     };
+    if (cfg.conCosto) nueva.cbmCaja = cbmCaja;
     nueva[cfg.dueno] = cfg.duenoId;
     Object.keys(precios).forEach(function (k) { nueva[k] = precios[k]; });
     agregar_(cfg.hoja, nueva);

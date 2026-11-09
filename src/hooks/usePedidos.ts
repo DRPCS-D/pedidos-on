@@ -16,6 +16,8 @@ export interface DatosLinea {
   /** Curva: unidades de este tamaño por caja, y cajas del color (0 = solo cantidad). */
   porCaja: number
   cajas: number
+  /** m³ de una caja de la curva del color (solo pedidos a fábrica). */
+  cbmCaja: number
   precioCosto: number
   precioVentaUsd: number
   precioVentaGs: number

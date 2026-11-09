@@ -11,11 +11,13 @@ import { FotoColor } from '@/components/productos/FotoColor'
 import { Button } from '@/components/ui/button'
 import { ErrorBox, Vacio } from '@/components/ui/estado'
 import { ConfirmModal } from '@/components/ui/modal'
+import { BarraProgreso } from '@/components/ui/barra-progreso'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCatalogo } from '@/hooks/useCatalogo'
 import { useContenedores } from '@/hooks/useContenedores'
 import { usePedidos } from '@/hooks/usePedidos'
+import { CAPACIDAD_CBM, cbmDeCargas, formatCbm } from '@/lib/cbm'
 import { formatCantidad, formatFecha } from '@/lib/format'
 import {
   ESTADO_CONTENEDOR_LABEL,
@@ -101,6 +103,9 @@ export default function ContenedorDetalle() {
   }
 
   const unidades = contenedor.cargas.reduce((s, x) => s + x.cantidad, 0)
+  const volumen = cbmDeCargas(contenedor.cargas, [...pedidoPorId.values()])
+  const capacidad = CAPACIDAD_CBM[contenedor.tipo]
+  const pctVolumen = capacidad > 0 ? (volumen.cbm / capacidad) * 100 : 0
   const idx = ESTADOS_CONTENEDOR.indexOf(contenedor.estado)
   const siguiente = ESTADOS_CONTENEDOR[idx + 1] as EstadoContenedor | undefined
   const vacio = contenedor.cargas.length === 0
@@ -167,6 +172,27 @@ export default function ContenedorDetalle() {
           </Dato>
           <Dato label="Carga">
             {formatCantidad(unidades)} unid. en {porPedido.length} {porPedido.length === 1 ? 'pedido' : 'pedidos'}
+          </Dato>
+          <Dato label="Volumen (CBM)">
+            {volumen.cbm > 0 || capacidad > 0 ? (
+              <>
+                <span className={pctVolumen > 100 ? 'font-medium text-destructive' : ''}>
+                  {formatCbm(volumen.cbm)}
+                  {capacidad > 0 && ` de ${formatCbm(capacidad)}`}
+                </span>
+                {capacidad > 0 && (
+                  <div className="mt-1.5 max-w-48">
+                    <BarraProgreso pct={pctVolumen} tono={pctVolumen > 100 ? 'atrasado' : pctVolumen > 90 ? 'aviso' : 'normal'} />
+                  </div>
+                )}
+                {pctVolumen > 100 && <p className="mt-1 text-xs text-destructive">Se pasa de la capacidad del contenedor.</p>}
+                {volumen.sinDato > 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">{formatCantidad(volumen.sinDato)} unid. sin m³ cargado, no cuentan.</p>
+                )}
+              </>
+            ) : (
+              '—'
+            )}
           </Dato>
           <Dato label="Salida estimada (ETD)">{formatFecha(contenedor.etd)}</Dato>
           <Dato label="Llegada estimada (ETA)">{formatFecha(contenedor.eta)}</Dato>

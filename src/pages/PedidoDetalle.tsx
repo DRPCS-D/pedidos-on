@@ -20,6 +20,7 @@ import { useConfig } from '@/hooks/useConfig'
 import { useContenedores } from '@/hooks/useContenedores'
 import { usePedidos } from '@/hooks/usePedidos'
 import { usePedidosCliente } from '@/hooks/usePedidosCliente'
+import { cbmDeLineas, formatCbm } from '@/lib/cbm'
 import { formatCantidad, formatFecha, formatGs, formatUsd } from '@/lib/format'
 import {
   agruparPorColor,
@@ -60,6 +61,7 @@ export default function PedidoDetalle() {
   const [procesando, setProcesando] = useState(false)
 
   const t = useMemo(() => (pedido ? totalesLineas(pedido.lineas) : null), [pedido])
+  const volumen = useMemo(() => (pedido ? cbmDeLineas(pedido.lineas) : { cbm: 0, sinDato: 0 }), [pedido])
   const costo = useMemo(() => totalConAjustes(t?.costo ?? 0, pedido ?? { descuentoTipo: '', descuentoValor: 0, cargos: [] }), [t, pedido])
   /** Pedidos de cliente que se abastecen de este pedido, con las unidades de cada uno. */
   const clientesDelPedido = useMemo(() => {
@@ -182,6 +184,12 @@ export default function PedidoDetalle() {
           </Dato>
           <Dato label="Fecha del pedido">{formatFecha(pedido.fechaPedido)}</Dato>
           <Dato label="Carga en contenedores">{CARGA_LABEL[carga]}</Dato>
+          <Dato label="Volumen (CBM)">
+            {volumen.cbm > 0 ? formatCbm(volumen.cbm) : '—'}
+            {volumen.cbm > 0 && volumen.sinDato > 0 && (
+              <span className="text-muted-foreground"> · {formatCantidad(volumen.sinDato)} unid. sin m³</span>
+            )}
+          </Dato>
         </dl>
         {pedido.notas && <p className="mt-4 whitespace-pre-line rounded-md bg-secondary/60 px-3 py-2 text-sm text-foreground">{pedido.notas}</p>}
       </section>
