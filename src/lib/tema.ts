@@ -70,3 +70,9 @@ export function suscribirTema(avisar: () => void): () => void {
     suscriptores.delete(avisar)
   }
 }
+
+/** El papel es blanco: al imprimir se fuerza el tema claro (también con Ctrl+P) y después se vuelve al elegido. */
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeprint', () => document.documentElement.classList.remove('dark'))
+  window.addEventListener('afterprint', () => aplicarTema())
+}

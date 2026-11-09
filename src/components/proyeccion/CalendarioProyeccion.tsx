@@ -89,13 +89,13 @@ export function CalendarioProyeccion({ proyeccion }: { proyeccion: Proyeccion })
           ))}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-3 rounded-sm bg-blue-500/30" /> Fabricación
+          <span className="size-3 rounded-sm bg-blue-500/30 print:bg-blue-300" /> Fabricación
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-3 rounded-sm bg-zinc-500/35" /> Pausa de la fábrica
+          <span className="size-3 rounded-sm bg-zinc-500/35 print:bg-zinc-400" /> Pausa de la fábrica
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-3 rounded-sm bg-emerald-500/30" /> Transporte marítimo
+          <span className="size-3 rounded-sm bg-emerald-500/30 print:bg-emerald-300" /> Transporte marítimo
         </span>
         <span className="flex items-center gap-1.5">
           <span className="size-3 rounded-sm ring-2 ring-blue-500" /> Inicio
